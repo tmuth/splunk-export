@@ -1,0 +1,50 @@
+[
+    {
+        "earliest": "2022-06-25T00:00:00",
+        "id": 1,
+        "index": "sample_people",
+        "latest": "2022-06-25T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    },
+    {
+        "earliest": "2022-06-26T00:00:00",
+        "id": 2,
+        "index": "sample_people",
+        "latest": "2022-06-26T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    },
+    {
+        "earliest": "2022-06-27T00:00:00",
+        "id": 3,
+        "index": "sample_people",
+        "latest": "2022-06-27T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    },
+    {
+        "earliest": "2022-06-28T00:00:00",
+        "id": 4,
+        "index": "sample_people",
+        "latest": "2022-06-28T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    },
+    {
+        "earliest": "2022-06-29T00:00:00",
+        "id": 5,
+        "index": "sample_people",
+        "latest": "2022-06-29T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    },
+    {
+        "earliest": "2022-06-30T00:00:00",
+        "id": 6,
+        "index": "sample_people",
+        "latest": "2022-06-30T23:59:59",
+        "pid": 58143,
+        "status": "completed"
+    }
+]
