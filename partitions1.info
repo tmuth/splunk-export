@@ -1,0 +1,196 @@
+{
+    "summary_data": {
+        "partition_count": 23,
+        "complete_count": 22,
+        "status": "starting",
+        "start_time": "2022-09-30T10:25:05.910591",
+        "end_time": "2022-09-30T10:25:19.613546",
+        "total_seconds": 13.7
+    },
+    "partitions": [
+        {
+            "id": 1,
+            "index": "sample_people",
+            "earliest": "2022-06-01T00:00:00",
+            "latest": "2022-06-05T23:59:59",
+            "status": "not started",
+            "pid": ""
+        },
+        {
+            "id": 2,
+            "index": "sample_people",
+            "earliest": "2022-06-06T00:00:00",
+            "latest": "2022-06-10T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 3,
+            "index": "sample_people",
+            "earliest": "2022-06-11T00:00:00",
+            "latest": "2022-06-15T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 4,
+            "index": "sample_people",
+            "earliest": "2022-06-16T00:00:00",
+            "latest": "2022-06-20T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 5,
+            "index": "sample_people",
+            "earliest": "2022-06-21T00:00:00",
+            "latest": "2022-06-25T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 6,
+            "index": "sample_people",
+            "earliest": "2022-06-26T00:00:00",
+            "latest": "2022-06-30T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 7,
+            "index": "sample_people",
+            "earliest": "2022-07-01T00:00:00",
+            "latest": "2022-07-05T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 8,
+            "index": "sample_people",
+            "earliest": "2022-07-06T00:00:00",
+            "latest": "2022-07-10T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 9,
+            "index": "sample_people",
+            "earliest": "2022-07-11T00:00:00",
+            "latest": "2022-07-15T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 10,
+            "index": "sample_people",
+            "earliest": "2022-07-16T00:00:00",
+            "latest": "2022-07-20T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 11,
+            "index": "sample_people",
+            "earliest": "2022-07-21T00:00:00",
+            "latest": "2022-07-25T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 12,
+            "index": "sample_people",
+            "earliest": "2022-07-26T00:00:00",
+            "latest": "2022-07-30T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 13,
+            "index": "sample_people",
+            "earliest": "2022-07-31T00:00:00",
+            "latest": "2022-08-04T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 14,
+            "index": "sample_people",
+            "earliest": "2022-08-05T00:00:00",
+            "latest": "2022-08-09T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 15,
+            "index": "sample_people",
+            "earliest": "2022-08-10T00:00:00",
+            "latest": "2022-08-14T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 16,
+            "index": "sample_people",
+            "earliest": "2022-08-15T00:00:00",
+            "latest": "2022-08-19T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 17,
+            "index": "sample_people",
+            "earliest": "2022-08-20T00:00:00",
+            "latest": "2022-08-24T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 18,
+            "index": "sample_people",
+            "earliest": "2022-08-25T00:00:00",
+            "latest": "2022-08-29T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 19,
+            "index": "sample_people",
+            "earliest": "2022-08-30T00:00:00",
+            "latest": "2022-09-03T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 20,
+            "index": "sample_people",
+            "earliest": "2022-09-04T00:00:00",
+            "latest": "2022-09-08T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 21,
+            "index": "sample_people",
+            "earliest": "2022-09-09T00:00:00",
+            "latest": "2022-09-13T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 22,
+            "index": "sample_people",
+            "earliest": "2022-09-14T00:00:00",
+            "latest": "2022-09-18T23:59:59",
+            "status": "completed",
+            "pid": ""
+        },
+        {
+            "id": 23,
+            "index": "sample_people",
+            "earliest": "2022-09-19T00:00:00",
+            "latest": "2022-09-23T23:59:59",
+            "status": "completed",
+            "pid": ""
+        }
+    ]
+}
