@@ -9,6 +9,7 @@ import dateutil.parser
 import json
 import re
 import os
+import tempfile
 import logging
 #from splunk_http_event_collector import http_event_collector
 import timeout_decorator
@@ -20,18 +21,19 @@ import sys
 from time import sleep
 import multiprocessing
 
-#if len(sys.argv) < 2:
-#    print "Pass the name of a config file as argument 1"
-#    exit(1)
 
-#if not os.path.exists(sys.argv[1]):
-#    print "Cannot find the configuration file: "+sys.argv[1]
-#    exit(1)
-config_file='export1.conf'
+# pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
 
 
-# In[ ]:
+if len(sys.argv) < 2:
+    print("Pass the name of a config file as argument 1")
+    exit(1)
 
+if not os.path.exists(sys.argv[1]):
+    print("Cannot find the configuration file: "+sys.argv[1])
+    exit(1)
+#config_file='export1.conf'
+config_file=sys.argv[1]
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
@@ -39,16 +41,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 logger = logging.getLogger()
 logger.handlers[0].stream = sys.stdout
-logger.setLevel(logging.INFO) # DEBUG,INFO,WARNING,ERROR,CRITICAL
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
+logger.setLevel(logging.DEBUG) # DEBUG,INFO,WARNING,ERROR,CRITICAL
 
 
 def load_config():
@@ -59,15 +52,14 @@ def load_config():
 def create_output_dir():
     path=config.get('export', 'directory')
     if not os.path.exists(path):
-        os.makedirs(path)
+        path_new=os.path.normpath(path)
+        os.makedirs(path_new)
 
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
     logging.debug('indexes: %s',config.get('search', 'indexes'))
     logging.debug('extra: %s',config.get('search', 'extra'))
     s='search index='+partition_in["index"]
-    #s+=' earliest='+partition_in["earliest"]
-    #s+=' latest='+partition_in["latest"]
     s+=' '+config.get('search', 'extra')
     
     logging.debug('s: %s',s)
@@ -234,6 +226,7 @@ def write_results(job_in,partition_in):
     earliest=re.sub("[/:]", "-", earliest)
 
     output_file=config.get('export', 'directory')+'/'+partition_in["index"]+"_"+earliest+".json"
+    output_file=os.path.normpath(output_file)
     f = open(output_file, "w")
     reader = results.JSONResultsReader(job_in)
     for result in reader:
