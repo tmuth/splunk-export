@@ -38,13 +38,26 @@ if not os.path.exists(sys.argv[1]):
 #config_file='export1.conf'
 config_file=sys.argv[1]
 
-logging.basicConfig(level=logging.DEBUG,
+
+
+
+
+def set_logging_level():
+    logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
                     datefmt='%m-%d %H:%M:%S')
 
-logger = logging.getLogger()
-logger.handlers[0].stream = sys.stdout
-logger.setLevel(logging.INFO) # DEBUG,INFO,WARNING,ERROR,CRITICAL
+    logger = logging.getLogger()
+    logger.handlers[0].stream = sys.stdout
+    log_level_config = config.get('export', 'log_level').upper()
+    log_level_config=re.sub(r"([A-Z]+).*", r"\1", log_level_config)
+    print(log_level_config)
+    level = logging.getLevelName(log_level_config) #
+    #logger.setLevel(logging.INFO) # DEBUG,INFO,WARNING,ERROR,CRITICAL
+    logger.setLevel(level)
+    print(logger.getEffectiveLevel())
+
+
 
 
 def load_config():
@@ -349,6 +362,7 @@ def main():
    
     
     load_config()
+    set_logging_level()
     partition_file=config.get('export', 'partition_file_name')
     service=connect()
     logging.debug(service)
