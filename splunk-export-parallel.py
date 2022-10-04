@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta
 from pprint import pprint
 import dateutil.parser
-import json
+import json,shutil
 import re
 import os
 import tempfile
@@ -57,12 +57,9 @@ def set_logging_level():
     logger.setLevel(level)
     print(logger.getEffectiveLevel())
 
-
-
-
 def load_config():
     global config
-    config = configparser.ConfigParser()
+    config = configparser.ConfigParser(inline_comment_prefixes=('#',';'))
     config.read(config_file)
 
 def create_output_dir(path_in):
@@ -124,7 +121,44 @@ def get_index_sourcetype_array():
         sourcetype_count=len(sourcetype_list)
 
     return out_array,index_count,sourcetype_count
-    
+
+def write_resume_summary(partition_file_in):
+    with open(partition_file_in,'r+') as f:
+        data = json.load(f)
+        data["summary_data"]["start_time"]=datetime.now().isoformat()
+        data["summary_data"]["status"] = 'resume'
+
+        for search_partition in data["partitions"]:
+            if search_partition["status"]!='complete':
+                search_partition["status"]='not started'
+                search_partition["pid"]=''
+
+        json_object = json.dumps(data, indent=4)
+        f.seek(0)
+        f.write(json_object)
+        f.truncate()
+
+
+def cleanup_failed_run(partition_file_in):
+    logging.info('cleanup_failed_run-start')
+    if not os.path.isfile(partition_file_in):
+        return False
+    else:
+        data={}
+        with open(partition_file_in,'r') as f:
+            data = json.load(f)
+
+        logging.info('status: %s',data["summary_data"]["status"])
+        logging.info('resume_mode: %s',config.get('export', 'resume_mode'))
+        if data["summary_data"]["status"]!='complete' and config.get('export', 'resume_mode')=='resume':
+            backup_file=partition_file_in+'bak'
+            shutil.copy(partition_file_in, backup_file)
+            write_resume_summary(partition_file_in)
+            logging.info('cleanup_failed_run-ok to resume')
+            return True
+        else:
+            logging.info('cleanup_failed_run-do not resume')
+            return False
 
 def write_search_partitions(date_array_in):
     logging.info('write_search_partitions-start')
@@ -187,7 +221,7 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
                 #return search_partition
                 break
                 
-        if status_in == 'completed':
+        if status_in == 'complete':
             data["summary_data"]["complete_count"]=int(data["summary_data"]["complete_count"])+1
             data["summary_data"]["total_results"]=int(data["summary_data"]["total_results"])+int(result_count_in)
             
@@ -206,6 +240,7 @@ def finalize_partition_status(partition_file_in,lock_in):
         data["summary_data"]["end_time"]=datetime.now().isoformat()
         date_start=datetime.fromisoformat(data["summary_data"]["start_time"])
         date_end=datetime.fromisoformat(data["summary_data"]["end_time"])
+        data["summary_data"]["status"] = 'complete'
         data["summary_data"]["total_seconds"] = round((date_end-date_start).total_seconds(),1)
         logging.info('Total seconds: %s',data["summary_data"]["total_seconds"])
         logging.info('Total results: %s',data["summary_data"]["total_results"])
@@ -275,7 +310,7 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
             
             #print_results(job)
             result_count=write_results(job,partition_out)
-            update_partition_status(partition_file_in,partition_out,'completed',lock_in,result_count)
+            update_partition_status(partition_file_in,partition_out,'complete',lock_in,result_count)
             #job.cancel()
         else:
             break
@@ -360,30 +395,28 @@ def connect():
 
 def main():
    
-    
     load_config()
     set_logging_level()
     partition_file=config.get('export', 'partition_file_name')
-    service=connect()
-    logging.debug(service)
-    date_array=explode_date_range(config.get('search', 'begin_date'),config.get('search', 'end_date'),
-                              config.get('export', 'parition_units'),int(config.get('export', 'partition_interval')))
-    write_search_partitions(date_array)
-    create_output_dir(config.get('export', 'directory'))
-    #get_search_partition(partition_file)
+    #service=connect()
+    #logging.debug(service)
+
+    should_resume=cleanup_failed_run(partition_file)
+
+    if not should_resume:
+        date_array=explode_date_range(config.get('search', 'begin_date'),config.get('search', 'end_date'),
+                                config.get('export', 'parition_units'),int(config.get('export', 'partition_interval')))
+        write_search_partitions(date_array)
+        create_output_dir(config.get('export', 'directory'))
+    
 
     procs = int(config.get('export', 'parallel_processes'))   # Number of processes to create
     lock = multiprocessing.Lock()
-	# Create a list of jobs and then iterate through
-	# the number of processes appending each process to
-	# the job list
     jobs = []
     for i in range(0, procs):
         process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,config,lock)))
         jobs.append(process)
 
-
-	# Start the processes (i.e. calculate the random number lists)
     for j in jobs:
         j.start()
 
