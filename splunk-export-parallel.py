@@ -2,6 +2,7 @@
 # coding: utf-8
 from __future__ import absolute_import
 from __future__ import print_function
+from contextlib import nullcontext
 import time
 from datetime import datetime, timedelta
 from pprint import pprint
@@ -14,6 +15,8 @@ import logging
 #from splunk_http_event_collector import http_event_collector
 import timeout_decorator
 import configparser
+import gzip
+import itertools
 
 import splunklib.client as client
 import splunklib.results as results
@@ -41,7 +44,7 @@ logging.basicConfig(level=logging.DEBUG,
 
 logger = logging.getLogger()
 logger.handlers[0].stream = sys.stdout
-logger.setLevel(logging.DEBUG) # DEBUG,INFO,WARNING,ERROR,CRITICAL
+logger.setLevel(logging.INFO) # DEBUG,INFO,WARNING,ERROR,CRITICAL
 
 
 def load_config():
@@ -49,10 +52,9 @@ def load_config():
     config = configparser.ConfigParser()
     config.read(config_file)
 
-def create_output_dir():
-    path=config.get('export', 'directory')
-    if not os.path.exists(path):
-        path_new=os.path.normpath(path)
+def create_output_dir(path_in):
+    if not os.path.exists(path_in):
+        path_new=os.path.normpath(path_in)
         os.makedirs(path_new)
 
 def build_search_string(partition_in):
@@ -71,31 +73,67 @@ def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str
     logging.debug('begin_date_in: %s',begin_date_in)
     logging.debug('end_date_in: %s',end_date_in)
     begin_date = dateutil.parser.parse(begin_date_in)
-    end_date = dateutil.parser.parse(end_date_in)
+    if not end_date_in:
+        end_date=datetime.now()
+    else:
+        end_date = dateutil.parser.parse(end_date_in)
 
     begin_current=begin_date
     result = []
     
     while begin_current < end_date:
-        end_current = begin_current+timedelta(**{interval_unit_in: interval_in})-timedelta(seconds=1)
+        
+        #end_current = begin_current+timedelta(**{interval_unit_in: interval_in})-timedelta(seconds=1)
+        end_current = begin_current+timedelta(**{interval_unit_in: interval_in})
+        if end_current > end_date:
+            end_current = end_date
+        logging.debug('end_current: %s',end_current)
         result.append ([begin_current,end_current])
-        begin_current=end_current+timedelta(seconds=1)
+        #begin_current=end_current+timedelta(seconds=1)
+       
+        
+        begin_current=end_current
+        logging.debug('begin_current: %s',begin_current)
     logging.info('explode_date_range-end')
     return result
 
+def get_index_sourcetype_array():
+    index_count=0
+    sourcetype_count=0
+    if not config.get('search', 'sourcetypes'):
+        out_array=config.get('search', 'indexes').split(",")
+        index_count=len(out_array)
+    else:
+        index_list=config.get('search', 'indexes').split(",")
+        sourcetype_list=config.get('search', 'sourcetypes').split(",")
+        out_array = itertools.product(index_list, sourcetype_list)
+        index_count=len(index_list)
+        sourcetype_count=len(sourcetype_list)
+
+    return out_array,index_count,sourcetype_count
+    
+
 def write_search_partitions(date_array_in):
     logging.info('write_search_partitions-start')
-    index_list=config.get('search', 'indexes').split(",")
+    index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array()
     json_data = {}
     result_list = []
     i=0
-    for index_entry in index_list:
+    for index_st_entry in index_sourcetype_array:
         for entry in date_array_in:
             i+=1
-            search_partition={'id':i,'index':index_entry,
+            
+            search_partition={'id':i,
                 'earliest': entry[0].isoformat(),'latest':entry[1].isoformat(),
-                #'earliest': entry[0].strftime("%m/%d/%Y:%H:%M:%S"),'latest':entry[1].strftime("%m/%d/%Y:%H:%M:%S"),
-                             'status':'not started','pid':''}
+                             'status':'not started','result_count':'','pid':''}
+
+            sourcetype_str=''
+            if type(index_st_entry) == tuple: 
+                search_partition['index']=index_st_entry[0]
+                search_partition['sourcetype']=index_st_entry[1]
+            else:
+                search_partition['index']=index_st_entry
+
             result_list.append(search_partition)
     
     summary_data={'partition_count': i,
@@ -103,7 +141,12 @@ def write_search_partitions(date_array_in):
                   'status': 'starting',
                   'start_time': datetime.now().isoformat(),
                   'end_time': '',
-                  'total_seconds': ''}
+                  'indexes':index_count,
+                  'total_seconds': '',
+                  'total_results': '0'}
+
+    if source_type_count>0:
+        summary_data['sourcetypes']=source_type_count
     
     json_data['summary_data']=summary_data
     json_data['partitions']=result_list
@@ -117,7 +160,7 @@ def write_search_partitions(date_array_in):
         
     logging.info('write_search_partitions-end')
 
-def update_partition_status(partition_file_in,partition_in,status_in,lock_in):
+def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in):
     lock_in.acquire()
     with open(partition_file_in,'r+') as f:
         #portalocker.lock(f, portalocker.LOCK_EX)
@@ -127,11 +170,14 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in):
             if search_partition["id"]==partition_in["id"]:
                 #pprint(search_partition["earliest"])
                 search_partition["status"]=status_in
+                search_partition["result_count"]=result_count_in
                 #return search_partition
                 break
                 
         if status_in == 'completed':
             data["summary_data"]["complete_count"]=int(data["summary_data"]["complete_count"])+1
+            data["summary_data"]["total_results"]=int(data["summary_data"]["total_results"])+int(result_count_in)
+            
             
         json_object = json.dumps(data, indent=4)
         f.seek(0)
@@ -149,6 +195,7 @@ def finalize_partition_status(partition_file_in,lock_in):
         date_end=datetime.fromisoformat(data["summary_data"]["end_time"])
         data["summary_data"]["total_seconds"] = round((date_end-date_start).total_seconds(),1)
         logging.info('Total seconds: %s',data["summary_data"]["total_seconds"])
+        logging.info('Total results: %s',data["summary_data"]["total_results"])
         json_object = json.dumps(data, indent=4)
         f.seek(0)
         f.write(json_object)
@@ -195,8 +242,10 @@ def search_export(service_in,search_in,partition_in):
                      'latest_time': partition_in["latest"],
                      "output_mode": "json"}
     job = service_in.jobs.export(search_in, **kwargs_export)
-
+    
+    
     logging.info("search_export-end")
+
     return job
         
 def dispatch_searches(partition_file_in,config_in,lock_in):
@@ -210,9 +259,10 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
             search_string=build_search_string(partition_out)
             service=connect()
             job=search_export(service,search_string,partition_out)
+            
             #print_results(job)
-            write_results(job,partition_out)
-            update_partition_status(partition_file_in,partition_out,'completed',lock_in)
+            result_count=write_results(job,partition_out)
+            update_partition_status(partition_file_in,partition_out,'completed',lock_in,result_count)
             #job.cancel()
         else:
             break
@@ -222,37 +272,71 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
         
 def write_results(job_in,partition_in):
     logging.info('write_results-start')
+    
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
+    file_path=config.get('export', 'directory')+'/'+partition_in["index"]
+    create_output_dir(file_path)
 
-    output_file=config.get('export', 'directory')+'/'+partition_in["index"]+"_"+earliest+".json"
+   # if partition_in["sourcetype"]:
+    if "sourcetype" in partition_in:
+        file_path=config.get('export', 'directory')+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+        create_output_dir(file_path)
+        file_name=file_path+"/"+partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest
+    else:
+        file_name=file_path+"/"+partition_in["index"]+"_"+earliest
+
+    output_file_temp=file_name+".tmp"
+    output_file_temp=os.path.normpath(output_file_temp)
+    output_file=file_name+".json"
     output_file=os.path.normpath(output_file)
-    f = open(output_file, "w")
-    reader = results.JSONResultsReader(job_in)
-    for result in reader:
-        if isinstance(result, dict):
-            print(result,file=f)
-        elif isinstance(result, results.Message):
-            # Diagnostic messages may be returned in the results
-            print(result,file=f)
+
+    if config.get('export', 'gzip')=='true':
+        f = gzip.open(output_file_temp, compresslevel=9, mode='wt')
+        output_file=output_file+'.gz'
+    else:
+        f = open(output_file_temp, "w")
+    #f = gzip.open(output_file_temp, 'wt')
+    #f = tempfile.mkstemp(dir=config.get('export', 'directory'))
+
+    try:
+        reader = results.JSONResultsReader(job_in)
+        i=0
+        for result in reader:
+            
+            i+=1
+            if isinstance(result, dict):
+                print(result,file=f)
+            elif isinstance(result, results.Message):
+                # Diagnostic messages may be returned in the results
+                print(result,file=f)
+    finally:
+        logging.debug("Result count: %s",i)
+        
+        os.rename(output_file_temp,output_file)
+        f.close()
+        return(i)
+
     
-    f.close()
+    
+    
+    #f.close()
     logging.info('write_results-end')
 
         
 def connect():
     try:
         logging.info('connect-start')
-        logging.debug('SPLUNK_HOST: %s',config.get('splunk', 'SPLUNK_HOST'))
-        logging.debug('SPLUNK_PORT: %s',config.get('splunk', 'SPLUNK_PORT'))
-        logging.debug('SPLUNK_AUTH_TOKEN: %s',config.get('splunk', 'SPLUNK_AUTH_TOKEN'))
+        logging.debug('SPLUNK_HOST: %s',config.get('splunk_source', 'SPLUNK_HOST'))
+        logging.debug('SPLUNK_PORT: %s',config.get('splunk_source', 'SPLUNK_PORT'))
+        logging.debug('SPLUNK_AUTH_TOKEN: %s',config.get('splunk_source', 'SPLUNK_AUTH_TOKEN'))
        
         service = client.connect(
-            host=config.get('splunk', 'SPLUNK_HOST'),
-            port=config.get('splunk', 'SPLUNK_PORT'),
+            host=config.get('splunk_source', 'SPLUNK_HOST'),
+            port=config.get('splunk_source', 'SPLUNK_PORT'),
         #    username=USERNAME,
         #    password=PASSWORD)
-            splunkToken=config.get('splunk', 'SPLUNK_AUTH_TOKEN'),
+            splunkToken=config.get('splunk_source', 'SPLUNK_AUTH_TOKEN'),
             autologin=True)
         logging.debug(service)
         logging.info('connect-successful')
@@ -271,7 +355,7 @@ def main():
     date_array=explode_date_range(config.get('search', 'begin_date'),config.get('search', 'end_date'),
                               config.get('export', 'parition_units'),int(config.get('export', 'partition_interval')))
     write_search_partitions(date_array)
-    create_output_dir()
+    create_output_dir(config.get('export', 'directory'))
     #get_search_partition(partition_file)
 
     procs = int(config.get('export', 'parallel_processes'))   # Number of processes to create
