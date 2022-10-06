@@ -326,6 +326,46 @@ def write_results(job_in,partition_in):
     if config.get('export', 'output_destination')=='file':
         return write_results_to_file(job_in,partition_in)
 
+    if config.get('export', 'output_destination')=='hec':
+        return send_results_to_hec(job_in,partition_in)
+
+def send_results_to_hec(job_in,partition_in):
+    hec_server=config.get('splunk_target', 'HEC_HOST')
+    hec_port=config.get('splunk_target', 'HEC_PORT')
+    hec_token=config.get('splunk_target', 'HEC_TOKEN')
+    use_hec_tls=config.get('splunk_target', 'HEC_TLS')
+    hec_tls_verify=config.get('splunk_target', 'HEC_TLS_VERIFY')
+
+    # Create an object reference to the library, initalized with our settings.
+    splhec = splunk_hec( token=hec_token, hec_server=hec_server, hec_port=hec_port,use_hec_tls=use_hec_tls,hec_tls_verify=hec_tls_verify )
+
+    index = 'hec_test'
+    sourcetype = '_json'
+    source = 'hec:test:events'
+    input_type='json'
+    
+    payload = {}
+    try:
+        reader = results.JSONResultsReader(job_in)
+        i=0
+        for result in reader:
+            
+            i+=1
+            if isinstance(result, dict):
+                payload['event']=str(result["_raw"])
+                payload['time'] = result["_time"]
+                payload['index'] = index
+                payload['sourcetype'] = sourcetype
+                splhec.send_event(payload)
+            elif isinstance(result, results.Message):
+                # Diagnostic messages may be returned in the results
+                logging.info('result: %s',result)
+    finally:
+        logging.debug("Result count: %s",i)
+        splhec.stop_threads_and_processing()
+        return i
+
+
 def write_results_to_file(job_in,partition_in):
     logging.info('write_results-start')
     
@@ -390,8 +430,6 @@ def connect():
         service = client.connect(
             host=config.get('splunk_source', 'SPLUNK_HOST'),
             port=config.get('splunk_source', 'SPLUNK_PORT'),
-        #    username=USERNAME,
-        #    password=PASSWORD)
             splunkToken=config.get('splunk_source', 'SPLUNK_AUTH_TOKEN'),
             autologin=True)
         logging.debug(service)
