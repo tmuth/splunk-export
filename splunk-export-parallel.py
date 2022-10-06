@@ -23,6 +23,7 @@ import splunklib.results as results
 import sys
 from time import sleep
 import multiprocessing
+from splunk_hec import splunk_hec
 
 
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
@@ -208,6 +209,8 @@ def write_search_partitions(date_array_in):
     logging.info('write_search_partitions-end')
 
 def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in):
+    logging.info('update_partition_status-start')
+    logging.info('result_count_in: %s',result_count_in)
     lock_in.acquire()
     with open(partition_file_in,'r+') as f:
         #portalocker.lock(f, portalocker.LOCK_EX)
@@ -231,6 +234,7 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
         f.write(json_object)
         f.truncate()
     lock_in.release()
+    logging.info('update_partition_status-end')
 
 def finalize_partition_status(partition_file_in,lock_in):
     lock_in.acquire()
@@ -317,8 +321,12 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
 
     logging.info('dispatch_searches-end')
 
-        
+
 def write_results(job_in,partition_in):
+    if config.get('export', 'output_destination')=='file':
+        return write_results_to_file(job_in,partition_in)
+
+def write_results_to_file(job_in,partition_in):
     logging.info('write_results-start')
     
     earliest=partition_in["earliest"]
@@ -398,8 +406,6 @@ def main():
     load_config()
     set_logging_level()
     partition_file=config.get('export', 'partition_file_name')
-    #service=connect()
-    #logging.debug(service)
 
     should_resume=cleanup_failed_run(partition_file)
 
