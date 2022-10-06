@@ -336,14 +336,17 @@ def send_results_to_hec(job_in,partition_in):
     use_hec_tls=config.get('splunk_target', 'HEC_TLS')
     hec_tls_verify=config.get('splunk_target', 'HEC_TLS_VERIFY')
 
+    # https://gitlab.com/johnfromthefuture/splunk-hec-library
     # Create an object reference to the library, initalized with our settings.
-    splhec = splunk_hec( token=hec_token, hec_server=hec_server, hec_port=hec_port,use_hec_tls=use_hec_tls,hec_tls_verify=hec_tls_verify )
+    splhec = splunk_hec( token=hec_token, hec_server=hec_server, hec_port=hec_port,
+                        use_hec_tls=use_hec_tls,hec_tls_verify=hec_tls_verify,
+                        logger=logging )
 
     index = 'hec_test'
     sourcetype = '_json'
     source = 'hec:test:events'
     input_type='json'
-    
+
     payload = {}
     try:
         reader = results.JSONResultsReader(job_in)
