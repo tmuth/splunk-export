@@ -26,10 +26,10 @@ import multiprocessing
 from splunk_hec import splunk_hec
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
 
-__author__ = “Tyler Muth”
-__source__ = “https://github.com/tmuth/splunk-export”
-__license__ = “MIT”
-__version__ = “0.1.0”
+__author__ = "Tyler Muth"
+__source__ = "https://github.com/tmuth/splunk-export"
+__license__ = "MIT"
+__version__ = "0.1.0"
 
 
 if len(sys.argv) < 2:
@@ -110,18 +110,53 @@ def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str
     logging.info('explode_date_range-end')
     return result
 
-def get_index_sourcetype_array():
+def search_splunk_for_sourtypes(index_list_in,date_array_in):
+    logging.info('search_splunk_for_sourtypes-start')
+    result_list=[]
+    for index in index_list_in:
+        service=connect()
+        logging.debug('Index: %s',index)
+        logging.debug('date_earliest: %s',min(date_array_in))
+        logging.debug('date_earliest: %s',max(date_array_in))
+        
+        search_string=' | metasearch index='+index+' sourcetype=* | stats count by index, sourcetype | fields - count'
+        logging.debug('search: %s',search_string)
+        earliest_date=min(date_array_in[0])
+        latest_date=max(date_array_in[1])
+        job=search(service,search_string,earliest_date.isoformat(),latest_date.isoformat())
+        reader = results.JSONResultsReader(job)
+        
+        for result in reader:
+            logging.debug(result)
+            result_list.append((result['index'],result['sourcetype']))
+
+        #pprint(result_list)
+    return result_list
+    
+
+def get_index_sourcetype_array(date_array_in):
     index_count=0
     sourcetype_count=0
     if not config.get('search', 'sourcetypes'):
         out_array=config.get('search', 'indexes').split(",")
         index_count=len(out_array)
     else:
-        index_list=config.get('search', 'indexes').split(",")
-        sourcetype_list=config.get('search', 'sourcetypes').split(",")
-        out_array = itertools.product(index_list, sourcetype_list)
-        index_count=len(index_list)
-        sourcetype_count=len(sourcetype_list)
+        #logger = logging.getLogger()
+        #logger.setLevel(logging.DEBUG)
+        if config.get('search', 'sourcetypes') == '*':
+            index_list=config.get('search', 'indexes').split(",")
+            index_count=len(index_list)
+            #logging.info('Index Count: %s',len(index_list))
+            out_array=search_splunk_for_sourtypes(index_list,date_array_in)
+            #sys.exit("Exit early")
+        else:
+            index_list=config.get('search', 'indexes').split(",")
+            logging.info('Index list: %s',index_list)
+            sourcetype_list=config.get('search', 'sourcetypes').split(",")
+            out_array = itertools.product(index_list, sourcetype_list)
+            logging.info('out_array: %s',out_array)
+            index_count=len(index_list)
+            sourcetype_count=len(sourcetype_list)
 
     return out_array,index_count,sourcetype_count
 
@@ -165,7 +200,7 @@ def cleanup_failed_run(partition_file_in):
 
 def write_search_partitions(date_array_in):
     logging.info('write_search_partitions-start')
-    index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array()
+    index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array(date_array_in)
     json_data = {}
     result_list = []
     i=0
@@ -303,7 +338,24 @@ def search_export(service_in,search_in,partition_in):
     logging.info("search_export-end")
 
     return job
-        
+
+def search(service_in,search_in,earliest_in,latest_in):
+    logging.info('search-start')
+
+    logging.debug(service_in)
+    logging.debug(search_in)
+    
+    kwargs_export = {"search_mode": "normal",
+                     'earliest_time': earliest_in,
+                     'latest_time': latest_in,
+                     "output_mode": "json"}
+    job = service_in.jobs.export(search_in, **kwargs_export)
+    
+    
+    logging.info("search-end")
+
+    return job
+
 def dispatch_searches(partition_file_in,config_in,lock_in):
     
     logging.info('dispatch_searches-start')
@@ -311,6 +363,7 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
     config=config_in
     set_logging_level()
     while True:
+    #while False:
         partition_out=get_search_partition(partition_file_in,lock_in)
 
         if partition_out is not None:
@@ -411,6 +464,8 @@ def write_results_to_file(job_in,partition_in):
     output_file=file_name+".json"
     output_file=os.path.normpath(output_file)
 
+    empty_result=True
+
     if config.get('export', 'gzip')=='true':
         f = gzip.open(output_file_temp, compresslevel=9, mode='wt')
         output_file=output_file+'.gz'
@@ -426,15 +481,21 @@ def write_results_to_file(job_in,partition_in):
             
             i+=1
             if isinstance(result, dict):
-                print(result,file=f)
+                empty_result=False
+                #print(result,file=f)
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
-                print(result,file=f)
+                #print(vars(job_in))
+                logging.debug("Empty result")
+                logging.debug("Diagnostic message: %s",result)
     finally:
         logging.debug("Result count: %s",i)
-        
-        os.rename(output_file_temp,output_file)
-        f.close()
+        if empty_result:
+            f.close()
+            os.remove(output_file_temp)
+        else:
+            os.rename(output_file_temp,output_file)
+            f.close()
         return(i)
 
     
