@@ -14,7 +14,7 @@ import tempfile
 import logging
 #from splunk_http_event_collector import http_event_collector
 import timeout_decorator
-import configparser
+import configparser 
 import gzip
 import itertools
 
@@ -62,7 +62,7 @@ def set_logging_level():
 
 def load_config():
     global config
-    config = configparser.ConfigParser(inline_comment_prefixes=('#',';'))
+    config = configparser.ConfigParser(os.environ,inline_comment_prefixes=('#',';'))
     config.read(config_file)
 
 def create_output_dir(path_in):
