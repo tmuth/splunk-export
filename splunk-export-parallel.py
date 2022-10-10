@@ -24,9 +24,12 @@ import sys
 from time import sleep
 import multiprocessing
 from splunk_hec import splunk_hec
-
-
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
+
+__author__ = “Tyler Muth”
+__source__ = “https://github.com/tmuth/splunk-export”
+__license__ = “MIT”
+__version__ = “0.1.0”
 
 
 if len(sys.argv) < 2:
@@ -40,23 +43,22 @@ if not os.path.exists(sys.argv[1]):
 config_file=sys.argv[1]
 
 
-
-
-
 def set_logging_level():
     logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+                    format='%(asctime)s %(name)-12s %(funcName)s %(levelname)-8s %(message)s',
                     datefmt='%m-%d %H:%M:%S')
 
     logger = logging.getLogger()
     logger.handlers[0].stream = sys.stdout
     log_level_config = config.get('export', 'log_level').upper()
-    log_level_config=re.sub(r"([A-Z]+).*", r"\1", log_level_config)
-    print(log_level_config)
+    #log_level_config=re.sub(r"([A-Z]+).*", r"\1", log_level_config)
     level = logging.getLevelName(log_level_config) #
-    #logger.setLevel(logging.INFO) # DEBUG,INFO,WARNING,ERROR,CRITICAL
     logger.setLevel(level)
-    print(logger.getEffectiveLevel())
+    #print(logger.getEffectiveLevel())
+
+    # Use in functions to enable custom log level
+    # logger = logging.getLogger()
+    # logger.setLevel(logging.DEBUG)
 
 def load_config():
     global config
@@ -289,6 +291,8 @@ def search_export(service_in,search_in,partition_in):
     logging.info('search_export-start')
 
     logging.debug(service_in)
+    logging.debug(search_in)
+    #pprint(search_in)
     kwargs_export = {"search_mode": "normal",
                      'earliest_time': partition_in["earliest"],
                      'latest_time': partition_in["latest"],
@@ -301,9 +305,11 @@ def search_export(service_in,search_in,partition_in):
     return job
         
 def dispatch_searches(partition_file_in,config_in,lock_in):
+    
     logging.info('dispatch_searches-start')
     global config
     config=config_in
+    set_logging_level()
     while True:
         partition_out=get_search_partition(partition_file_in,lock_in)
 
@@ -330,6 +336,7 @@ def write_results(job_in,partition_in):
         return send_results_to_hec(job_in,partition_in)
 
 def send_results_to_hec(job_in,partition_in):
+    
     hec_server=config.get('splunk_target', 'HEC_HOST')
     hec_port=config.get('splunk_target', 'HEC_PORT')
     hec_token=config.get('splunk_target', 'HEC_TOKEN')
@@ -338,14 +345,15 @@ def send_results_to_hec(job_in,partition_in):
 
     # https://gitlab.com/johnfromthefuture/splunk-hec-library
     # Create an object reference to the library, initalized with our settings.
+    input_type='raw'
     splhec = splunk_hec( token=hec_token, hec_server=hec_server, hec_port=hec_port,
                         use_hec_tls=use_hec_tls,hec_tls_verify=hec_tls_verify,
-                        logger=logging )
+                        logger=logging,input_type=input_type )
 
     index = 'hec_test'
     sourcetype = '_json'
     source = 'hec:test:events'
-    input_type='json'
+    
 
     payload = {}
     try:
@@ -354,18 +362,31 @@ def send_results_to_hec(job_in,partition_in):
         for result in reader:
             
             i+=1
+            #pprint(result)
             if isinstance(result, dict):
-                payload['event']=str(result["_raw"])
-                payload['time'] = result["_time"]
-                payload['index'] = index
-                payload['sourcetype'] = sourcetype
+                # Note dateutil.parser.parse() took double the time for 90k events
+                time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z').strftime('%s')
+                
+
+                splhec.set_request_params({'_time':time_stamp,'index':result["index"], 'sourcetype':result["sourcetype"], 'source':result["source"]})
+                #logging.debug("result-sourcetype: %s",result["index"])
+                #pprint(result)
+                payload=str(result["_raw"])
+                #payload['event']=str(result["_raw"])
+                #payload['time'] = result["_time"]
+                #payload['index'] = result["index"]
+                #payload['source'] = result["source"]
+                #payload['sourcetype'] = result["sourcetype"]
                 splhec.send_event(payload)
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 logging.info('result: %s',result)
+    except Exception as Argument:
+        logging.exception('Send to HEC error')
     finally:
         logging.debug("Result count: %s",i)
         splhec.stop_threads_and_processing()
+        
         return i
 
 
