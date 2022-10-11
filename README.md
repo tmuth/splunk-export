@@ -8,3 +8,9 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 - HTTP Event Collector (HEC)
 - S3 (coming soon)
 
+## Export Formats
+- JSON
+- gzipped JSON
+- JSON over HEC
+- CSV (coming soon)
+- Parquet (coming soon)
