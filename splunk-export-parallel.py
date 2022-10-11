@@ -1,28 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
-from __future__ import absolute_import
-from __future__ import print_function
-from contextlib import nullcontext
-import time
+
+import re,os,sys,tempfile,multiprocessing
 from datetime import datetime, timedelta
 from pprint import pprint
 import dateutil.parser
-import json,shutil
-import re
-import os
-import tempfile
+import json,shutil,itertools,gzip
 import logging
-#from splunk_http_event_collector import http_event_collector
-import timeout_decorator
 import configparser 
-import gzip
-import itertools
-
 import splunklib.client as client
 import splunklib.results as results
-import sys
 from time import sleep
-import multiprocessing
 from splunk_hec import splunk_hec
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
 
