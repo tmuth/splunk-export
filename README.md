@@ -22,8 +22,13 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 ## Performance
 Sample export with an index size of 12 GB containing 30 million events. 
 - splunk cli export: 13m4s
-- his utility with 4 processes: 3m28s
+- This utility with 4 processes: 3m28s
 - This utility with 8 processes: 1m49s
 - This utility with 12 processes: 1m18s
 
+### htop of cli export
+![htop cli export - single process](https://raw.githubusercontent.com/tmuth/splunk-export/main/images/htop-cli-export.png)
+
+### htop of splunk-parallel-export.py with 12 processes
+![htop of splunk-parallel-export.py with 12 processes](https://raw.githubusercontent.com/tmuth/splunk-export/main/images/htop-12-processes.png)
 
