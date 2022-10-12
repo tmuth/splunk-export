@@ -14,3 +14,16 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 - JSON over HEC
 - CSV (coming soon)
 - Parquet (coming soon)
+
+## Features
+- Parallel export: Increase export performance by using available CPU resources
+- Resume Failed: If something happens in the middle of an export job, you can restart it with the resume parameter. This will skip any partitions that completed, and only run those partitions that did not complete or were never started. 
+
+## Performance
+Sample export with an index size of 12 GB containing 30 million events. 
+- splunk cli export: 13m4s
+- his utility with 4 processes: 3m28s
+- This utility with 8 processes: 1m49s
+- This utility with 12 processes: 1m18s
+
+
