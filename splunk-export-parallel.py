@@ -17,7 +17,7 @@ from splunk_hec import splunk_hec
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221012_"
+__version__ = "20221012_094232"
 
 
 if len(sys.argv) < 2:
