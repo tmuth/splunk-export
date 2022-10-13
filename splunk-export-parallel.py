@@ -58,6 +58,7 @@ def create_output_dir(path_in):
     if not os.path.exists(path_new):
         os.makedirs(path_new)
 
+
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
     logging.debug('indexes: %s',config.get('search', 'indexes'))
