@@ -54,8 +54,8 @@ def load_config():
     config.read(config_file)
 
 def create_output_dir(path_in):
-    if not os.path.exists(path_in):
-        path_new=os.path.normpath(path_in)
+    path_new=os.path.normpath(path_in)
+    if not os.path.exists(path_new):
         os.makedirs(path_new)
 
 def build_search_string(partition_in):
