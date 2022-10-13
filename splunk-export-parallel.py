@@ -17,7 +17,7 @@ from splunk_hec import splunk_hec
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221013_144417"
+__version__ = "20221013_144439"
 
 
 if len(sys.argv) < 2:
@@ -57,7 +57,6 @@ def create_output_dir(path_in):
     path_new=os.path.normpath(path_in)
     if not os.path.exists(path_new):
         os.makedirs(path_new)
-
 
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
