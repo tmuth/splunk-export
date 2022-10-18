@@ -7,7 +7,7 @@ from pprint import pprint
 import dateutil.parser
 import json,shutil,itertools,gzip
 import logging
-import configparser 
+#import configparser 
 import splunklib.client as client
 import splunklib.results as results
 from time import sleep
@@ -18,7 +18,7 @@ import configargparse
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221018_135257"
+__version__ = "20221018_151639"
 
 
 if len(sys.argv) < 2:
@@ -91,6 +91,7 @@ def load_config2():
     p.add('--output_destination', required=True, help='')
     p.add('--gzip', required=True, help='')
     p.add('--resume_mode', required=True, help='')
+    p.add('--max_file_size_mb', default='1', help='')
 
     global options
     options = p.parse_args()
@@ -517,6 +518,9 @@ def write_results_to_file(job_in,partition_in):
                 empty_result=False
                 logging.debug("Non-Empty result")
                 print(result,file=f)
+                if i % 500 == 0:
+                    current_size = f.tell()/1024/1024
+                    print(f'Loop {i} The {output_file_temp} size is in mb',current_size)
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 #print(vars(job_in))
