@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import re,os,sys,tempfile,multiprocessing
+import re,os,sys,tempfile,multiprocessing,random
 from datetime import datetime, timedelta
 from pprint import pprint
 import dateutil.parser
@@ -18,7 +18,7 @@ import configargparse
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221018_151639"
+__version__ = "20221018_180543"
 
 
 if len(sys.argv) < 2:
@@ -91,7 +91,7 @@ def load_config2():
     p.add('--output_destination', required=True, help='')
     p.add('--gzip', required=True, help='')
     p.add('--resume_mode', required=True, help='')
-    p.add('--max_file_size_mb', default='1', help='')
+    p.add('--max_file_size_mb', default='200', help='')
 
     global options
     options = p.parse_args()
@@ -106,6 +106,8 @@ def build_search_string(partition_in):
     logging.debug('indexes: %s',options.indexes)
     logging.debug('extra: %s',options.extra)
     s='search index='+partition_in["index"]
+    if options.sourcetypes:
+        s+=' sourcetype='+partition_in["sourcetype"]
     s+=' '+options.extra
     
     logging.debug('s: %s',s)
@@ -359,10 +361,14 @@ def search_export(service_in,search_in,partition_in):
     logging.debug(service_in)
     logging.debug(search_in)
     #pprint(search_in)
+    #search_id="splunk_export_search_"+str(round(random.uniform(10000000, 90000000),4))
+    search_id=str(round(random.uniform(10000000, 90000000),4))
+    logging.debug("Search ID: %s, OS Process ID: %s",search_id,os.getpid())
     kwargs_export = {"search_mode": "normal",
                      'earliest_time': partition_in["earliest"],
                      'latest_time': partition_in["latest"],
-                     "output_mode": "json"}
+                     "output_mode": "json",
+                     "id":search_id}
     # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
     set_logging_level('INFO')
 
@@ -492,22 +498,40 @@ def write_results_to_file(job_in,partition_in):
     else:
         file_name=file_path+"/"+partition_in["index"]+"_"+earliest
 
-    output_file_temp=file_name+".tmp"
-    output_file_temp=os.path.normpath(output_file_temp)
-    output_file=file_name+".json"
-    output_file=os.path.normpath(output_file)
-    logging.debug('output_file_temp: %s',output_file_temp)
+
 
     empty_result=True
+    file_number=0
+    def get_new_file_name(file_name_in):
+        version_extension=''
+        if file_number > 0:
+            version_extension='.'+str(file_number)
+        output_file_temp_local=file_name_in+version_extension+".tmp"
+        output_file_temp_local=os.path.normpath(output_file_temp_local)
+        output_file_local=file_name_in+version_extension+".json"
+        output_file_local=os.path.normpath(output_file_local)
 
-    if options.gzip=='true':
-        f = gzip.open(output_file_temp, compresslevel=9, mode='wt')
-        output_file=output_file+'.gz'
-    else:
-        f = open(output_file_temp, "w")
+        return output_file_temp_local,output_file_local
+
+    output_file_temp,output_file=get_new_file_name(file_name)
+    logging.debug('output_file_temp: %s',output_file_temp)
+
+    def open_file(output_file_temp_in):
+        if options.gzip=='true':
+            f_out = gzip.open(output_file_temp_in, compresslevel=9, mode='wt')
+            output_file=output_file+'.gz'
+        else:
+            f_out = open(output_file_temp_in, "w")
+
+        return f_out
+
+    f = open_file(output_file_temp)
     #f = gzip.open(output_file_temp, 'wt')
     #f = tempfile.mkstemp(dir=options.directory)
+    
 
+
+    
     try:
         reader = results.JSONResultsReader(job_in)
         i=0
@@ -516,16 +540,36 @@ def write_results_to_file(job_in,partition_in):
             i+=1
             if isinstance(result, dict):
                 empty_result=False
-                logging.debug("Non-Empty result")
+                #logging.debug("Non-Empty result")
                 print(result,file=f)
-                if i % 500 == 0:
+                if i % 10000 == 0:
                     current_size = f.tell()/1024/1024
-                    print(f'Loop {i} The {output_file_temp} size is in mb',current_size)
+                    #print(f'Loop {i} The {output_file_temp} size is in mb',current_size)
+                    if current_size >= float(options.max_file_size_mb):
+                        logging.info("Reached file size limit %s: ",current_size)
+                        f.close()
+                        
+                        if file_number == 0:
+                            file_number+=1
+                            dummy,output_file=get_new_file_name(file_name)
+                        
+
+                        #logging.info("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
+                        logging.info("Result count for:%s is %s",output_file,i)
+                        os.rename(output_file_temp,output_file)
+                        file_number+=1
+                        output_file_temp,output_file=get_new_file_name(file_name)
+                        logging.info("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
+                        f = open_file(output_file_temp)
+                        
+
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 #print(vars(job_in))
                 logging.debug("Empty result")
                 logging.debug("Diagnostic message: %s",result)
+    except Exception as Argument:
+        logging.exception('Write to file error')
     finally:
         logging.debug("Result count: %s",i)
         if empty_result:
