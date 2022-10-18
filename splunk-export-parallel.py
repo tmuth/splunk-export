@@ -12,33 +12,38 @@ import splunklib.client as client
 import splunklib.results as results
 from time import sleep
 from splunk_hec import splunk_hec
-# pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf
+import configargparse
+# pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221018_095639"
+__version__ = "20221018_135257"
 
 
 if len(sys.argv) < 2:
     print("Pass the name of a config file as argument 1")
     exit(1)
 
-if not os.path.exists(sys.argv[1]):
-    print("Cannot find the configuration file: "+sys.argv[1])
-    exit(1)
+#if not os.path.exists(sys.argv[1]):
+#    print("Cannot find the configuration file: "+sys.argv[1])
+#    exit(1)
 #config_file='export1.conf'
-config_file=sys.argv[1]
+#config_file=sys.argv[1]
 
 
-def set_logging_level():
+def set_logging_level(log_level_in=None):
     logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s %(name)-12s %(funcName)s %(levelname)-8s %(message)s',
                     datefmt='%m-%d %H:%M:%S')
 
     logger = logging.getLogger()
     logger.handlers[0].stream = sys.stdout
-    log_level_config = config.get('export', 'log_level').upper()
+    if log_level_in is None:
+        log_level_config = options.log_level.upper()
+    else:
+        log_level_config=log_level_in
+    #log_level_config = options.log_level.upper()
     #log_level_config=re.sub(r"([A-Z]+).*", r"\1", log_level_config)
     level = logging.getLevelName(log_level_config) #
     logger.setLevel(level)
@@ -53,6 +58,43 @@ def load_config():
     config = configparser.ConfigParser(os.environ,inline_comment_prefixes=('#',';'))
     config.read(config_file)
 
+def load_config2():
+    p = configargparse.ArgParser()
+    p.add('-c', '--my-config', required=True, is_config_file=True, help='config file path')
+    p.add('--SPLUNK_HOST', required=True, help='')
+    p.add('--SPLUNK_PORT', required=True, help='')
+    p.add('--SPLUNK_AUTH_TOKEN', required=True, help='',env_var='SPLUNK_LAPTOP_TOKEN')
+
+
+    p.add('--HEC_HOST', required=True, help='')
+    p.add('--HEC_PORT', required=True, help='')
+    p.add('--HEC_TOKEN', required=True, help='')
+    p.add('--HEC_TLS', required=True, help='')
+    p.add('--HEC_TLS_VERIFY', required=True, help='')
+
+
+    #indexes', required=True, help='')
+    p.add('--indexes', required=True, help='')
+    #sourcetypes', required=True, help='')
+    p.add('--sourcetypes', required=True, help='')
+    p.add('--begin_date', required=True, help='')
+    p.add('--end_date', required=True, help='')
+    p.add('--extra', required=True, help='')
+
+
+    p.add('--log_level', required=True, help='')
+    p.add('--parition_units', required=True, help='')
+    p.add('--partition_interval', required=True, help='')
+    p.add('--directory', required=True, help='')
+    p.add('--parallel_processes', required=True, help='')
+    p.add('--partition_file_name', required=True, help='')
+    p.add('--output_destination', required=True, help='')
+    p.add('--gzip', required=True, help='')
+    p.add('--resume_mode', required=True, help='')
+
+    global options
+    options = p.parse_args()
+
 def create_output_dir(path_in):
     path_new=os.path.normpath(path_in)
     if not os.path.exists(path_new):
@@ -60,10 +102,10 @@ def create_output_dir(path_in):
 
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
-    logging.debug('indexes: %s',config.get('search', 'indexes'))
-    logging.debug('extra: %s',config.get('search', 'extra'))
+    logging.debug('indexes: %s',options.indexes)
+    logging.debug('extra: %s',options.extra)
     s='search index='+partition_in["index"]
-    s+=' '+config.get('search', 'extra')
+    s+=' '+options.extra
     
     logging.debug('s: %s',s)
     logging.info('build_search_string-end')
@@ -125,22 +167,22 @@ def search_splunk_for_sourtypes(index_list_in,date_array_in):
 def get_index_sourcetype_array(date_array_in):
     index_count=0
     sourcetype_count=0
-    if not config.get('search', 'sourcetypes'):
-        out_array=config.get('search', 'indexes').split(",")
+    if not options.sourcetypes:
+        out_array=options.indexes.split(",")
         index_count=len(out_array)
     else:
         #logger = logging.getLogger()
         #logger.setLevel(logging.DEBUG)
-        if config.get('search', 'sourcetypes') == '*':
-            index_list=config.get('search', 'indexes').split(",")
+        if options.sourcetypes == '*':
+            index_list=options.indexes.split(",")
             index_count=len(index_list)
             #logging.info('Index Count: %s',len(index_list))
             out_array=search_splunk_for_sourtypes(index_list,date_array_in)
             #sys.exit("Exit early")
         else:
-            index_list=config.get('search', 'indexes').split(",")
+            index_list=options.indexes.split(",")
             logging.info('Index list: %s',index_list)
-            sourcetype_list=config.get('search', 'sourcetypes').split(",")
+            sourcetype_list=options.sourcetypes.split(",")
             out_array = itertools.product(index_list, sourcetype_list)
             logging.info('out_array: %s',out_array)
             index_count=len(index_list)
@@ -175,8 +217,8 @@ def cleanup_failed_run(partition_file_in):
             data = json.load(f)
 
         logging.info('status: %s',data["summary_data"]["status"])
-        logging.info('resume_mode: %s',config.get('export', 'resume_mode'))
-        if data["summary_data"]["status"]!='complete' and config.get('export', 'resume_mode')=='resume':
+        logging.info('resume_mode: %s',options.resume_mode)
+        if data["summary_data"]["status"]!='complete' and options.resume_mode=='resume':
             backup_file=partition_file_in+'bak'
             shutil.copy(partition_file_in, backup_file)
             write_resume_summary(partition_file_in)
@@ -228,7 +270,7 @@ def write_search_partitions(date_array_in):
     #print(search_partitions)      
     
     
-    with open(config.get('export', 'partition_file_name'), "w") as outfile:
+    with open(options.partition_file_name, "w") as outfile:
         outfile.write(search_partitions)
         
     logging.info('write_search_partitions-end')
@@ -320,8 +362,10 @@ def search_export(service_in,search_in,partition_in):
                      'earliest_time': partition_in["earliest"],
                      'latest_time': partition_in["latest"],
                      "output_mode": "json"}
+    # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
+    set_logging_level('INFO')
+
     job = service_in.jobs.export(search_in, **kwargs_export)
-    
     
     logging.info("search_export-end")
 
@@ -344,11 +388,11 @@ def search(service_in,search_in,earliest_in,latest_in):
 
     return job
 
-def dispatch_searches(partition_file_in,config_in,lock_in):
+def dispatch_searches(partition_file_in,options_in,lock_in):
     
     logging.info('dispatch_searches-start')
-    global config
-    config=config_in
+    global options
+    options=options_in
     set_logging_level()
     while True:
     #while False:
@@ -358,7 +402,7 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
             search_string=build_search_string(partition_out)
             service=connect()
             job=search_export(service,search_string,partition_out)
-            
+            #set_logging_level('DEBUG')
             #print_results(job)
             result_count=write_results(job,partition_out)
             update_partition_status(partition_file_in,partition_out,'complete',lock_in,result_count)
@@ -370,19 +414,19 @@ def dispatch_searches(partition_file_in,config_in,lock_in):
 
 
 def write_results(job_in,partition_in):
-    if config.get('export', 'output_destination')=='file':
+    if options.output_destination=='file':
         return write_results_to_file(job_in,partition_in)
 
-    if config.get('export', 'output_destination')=='hec':
+    if options.output_destination=='hec':
         return send_results_to_hec(job_in,partition_in)
 
 def send_results_to_hec(job_in,partition_in):
     
-    hec_server=config.get('splunk_target', 'HEC_HOST')
-    hec_port=config.get('splunk_target', 'HEC_PORT')
-    hec_token=config.get('splunk_target', 'HEC_TOKEN')
-    use_hec_tls=config.get('splunk_target', 'HEC_TLS')
-    hec_tls_verify=config.get('splunk_target', 'HEC_TLS_VERIFY')
+    hec_server=options.HEC_HOST
+    hec_port=options.HEC_PORT
+    hec_token=options.HEC_TOKEN
+    use_hec_tls=options.HEC_TLS
+    hec_tls_verify=options.HEC_TLS_VERIFY
 
     # https://gitlab.com/johnfromthefuture/splunk-hec-library
     # Create an object reference to the library, initalized with our settings.
@@ -436,12 +480,12 @@ def write_results_to_file(job_in,partition_in):
     
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
-    file_path=config.get('export', 'directory')+'/'+partition_in["index"]
+    file_path=options.directory+'/'+partition_in["index"]
     create_output_dir(file_path)
 
    # if partition_in["sourcetype"]:
     if "sourcetype" in partition_in:
-        file_path=config.get('export', 'directory')+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+        file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
         create_output_dir(file_path)
         file_name=file_path+"/"+partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest
     else:
@@ -451,16 +495,17 @@ def write_results_to_file(job_in,partition_in):
     output_file_temp=os.path.normpath(output_file_temp)
     output_file=file_name+".json"
     output_file=os.path.normpath(output_file)
+    logging.debug('output_file_temp: %s',output_file_temp)
 
     empty_result=True
 
-    if config.get('export', 'gzip')=='true':
+    if options.gzip=='true':
         f = gzip.open(output_file_temp, compresslevel=9, mode='wt')
         output_file=output_file+'.gz'
     else:
         f = open(output_file_temp, "w")
     #f = gzip.open(output_file_temp, 'wt')
-    #f = tempfile.mkstemp(dir=config.get('export', 'directory'))
+    #f = tempfile.mkstemp(dir=options.directory)
 
     try:
         reader = results.JSONResultsReader(job_in)
@@ -470,7 +515,8 @@ def write_results_to_file(job_in,partition_in):
             i+=1
             if isinstance(result, dict):
                 empty_result=False
-                #print(result,file=f)
+                logging.debug("Non-Empty result")
+                print(result,file=f)
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 #print(vars(job_in))
@@ -496,14 +542,14 @@ def write_results_to_file(job_in,partition_in):
 def connect():
     try:
         logging.info('connect-start')
-        logging.debug('SPLUNK_HOST: %s',config.get('splunk_source', 'SPLUNK_HOST'))
-        logging.debug('SPLUNK_PORT: %s',config.get('splunk_source', 'SPLUNK_PORT'))
-        logging.debug('SPLUNK_AUTH_TOKEN: %s',config.get('splunk_source', 'SPLUNK_AUTH_TOKEN'))
+        logging.debug('SPLUNK_HOST: %s',options.SPLUNK_HOST)
+        logging.debug('SPLUNK_PORT: %s',options.SPLUNK_PORT)
+        logging.debug('SPLUNK_AUTH_TOKEN: %s',options.SPLUNK_AUTH_TOKEN)
        
         service = client.connect(
-            host=config.get('splunk_source', 'SPLUNK_HOST'),
-            port=config.get('splunk_source', 'SPLUNK_PORT'),
-            splunkToken=config.get('splunk_source', 'SPLUNK_AUTH_TOKEN'),
+            host=options.SPLUNK_HOST,
+            port=options.SPLUNK_PORT,
+            splunkToken=options.SPLUNK_AUTH_TOKEN,
             autologin=True)
         logging.debug(service)
         logging.info('connect-successful')
@@ -513,25 +559,27 @@ def connect():
         logging.error('connect-failed')
 
 def main():
-   
-    load_config()
+    
+
+    #load_config()
+    load_config2()
     set_logging_level()
-    partition_file=config.get('export', 'partition_file_name')
+    partition_file=options.partition_file_name
 
     should_resume=cleanup_failed_run(partition_file)
 
     if not should_resume:
-        date_array=explode_date_range(config.get('search', 'begin_date'),config.get('search', 'end_date'),
-                                config.get('export', 'parition_units'),int(config.get('export', 'partition_interval')))
+        date_array=explode_date_range(options.begin_date,options.end_date,
+                                options.parition_units,int(options.partition_interval))
         write_search_partitions(date_array)
-        create_output_dir(config.get('export', 'directory'))
+        create_output_dir(options.directory)
     
 
-    procs = int(config.get('export', 'parallel_processes'))   # Number of processes to create
+    procs = int(options.parallel_processes)   # Number of processes to create
     lock = multiprocessing.Lock()
     jobs = []
     for i in range(0, procs):
-        process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,config,lock)))
+        process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,options,lock)))
         jobs.append(process)
 
     for j in jobs:
