@@ -7,7 +7,7 @@ from pprint import pprint
 import dateutil.parser
 import json,shutil,itertools,gzip
 import logging
-#import configparser 
+#import configparser
 import splunklib.client as client
 import splunklib.results as results
 from time import sleep
@@ -18,7 +18,7 @@ import configargparse
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221018_180543"
+__version__ = "20221019_170406"
 
 
 if len(sys.argv) < 2:
@@ -368,6 +368,8 @@ def search_export(service_in,search_in,partition_in):
                      'earliest_time': partition_in["earliest"],
                      'latest_time': partition_in["latest"],
                      "output_mode": "json",
+                     "count":0,
+                     "preview":"false",
                      "id":search_id}
     # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
     set_logging_level('INFO')
@@ -387,7 +389,9 @@ def search(service_in,search_in,earliest_in,latest_in):
     kwargs_export = {"search_mode": "normal",
                      'earliest_time': earliest_in,
                      'latest_time': latest_in,
-                     "output_mode": "json"}
+                     "output_mode": "json",
+                     "count":0,
+                     "preview":"false"}
     job = service_in.jobs.export(search_in, **kwargs_export)
     
     
