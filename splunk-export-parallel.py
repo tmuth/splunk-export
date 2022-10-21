@@ -18,7 +18,7 @@ import configargparse
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221021_081409"
+__version__ = "20221021_102924"
 
 
 if len(sys.argv) < 2:
@@ -53,12 +53,8 @@ def set_logging_level(log_level_in=None):
     # logger = logging.getLogger()
     # logger.setLevel(logging.DEBUG)
 
-def load_config():
-    global config
-    config = configparser.ConfigParser(os.environ,inline_comment_prefixes=('#',';'))
-    config.read(config_file)
 
-def load_config2():
+def load_config():
     p = configargparse.ArgParser()
     p.add('-c', '--my-config', required=True, is_config_file=True, help='config file path')
     p.add('--SPLUNK_HOST', required=True, help='')
@@ -88,18 +84,48 @@ def load_config2():
     p.add('--directory', required=True, help='')
     p.add('--parallel_processes', required=True, help='')
     p.add('--partition_file_name', required=True, help='')
+    p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
+    p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
     p.add('--output_destination', required=True, help='')
     p.add('--gzip', required=True, help='')
-    p.add('--resume_mode', required=True, help='')
+    p.add('--resume_mode', required=False, help='', default=False)
+    p.add('--incremental_mode', required=False, help='', default=False)
     p.add('--max_file_size_mb', default='0', help='')
 
     global options
     options = p.parse_args()
 
+    
+def get_globals():
+    
+    catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
+    if options.incremental_mode:
+        job_partition_name=options.job_name+'-'+datetime.now().strftime("%Y%m%d_%H%M%S")
+    else:
+        job_partition_name=options.job_name
+    job_partition_path=os.path.join(catalog_dir,job_partition_name)
+
+    global global_vars
+    
+    if 'global_vars' not in globals():
+        global_vars={
+            'catalog_dir':catalog_dir,
+            'job_partition_name':job_partition_name,
+            'job_partition_path':job_partition_path
+            }
+    return None
+
+
 def create_output_dir(path_in):
     path_new=os.path.normpath(path_in)
     if not os.path.exists(path_new):
         os.makedirs(path_new)
+
+def create_catalog():
+    pprint(global_vars)
+    # catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
+    create_output_dir(global_vars["catalog_dir"])
+    create_output_dir(global_vars["job_partition_path"])
 
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
@@ -633,12 +659,15 @@ def connect():
 
 def main():
     
-
-    #load_config()
-    load_config2()
+    load_config()
+    
+    get_globals()
+    pprint(global_vars)
+    
     set_logging_level()
     partition_file=options.partition_file_name
-
+    create_catalog()
+    quit()
     should_resume=cleanup_failed_run(partition_file)
 
     if not should_resume:
@@ -647,7 +676,7 @@ def main():
         write_search_partitions(date_array)
         create_output_dir(options.directory)
     
-
+   
     procs = int(options.parallel_processes)   # Number of processes to create
     lock = multiprocessing.Lock()
     jobs = []
@@ -664,6 +693,7 @@ def main():
     #dispatch_searches(partition_file)
     finalize_partition_status(partition_file,lock)
 
+#global_vars={}
 if __name__ == "__main__":
     main()
 
