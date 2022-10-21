@@ -18,7 +18,7 @@ import configargparse
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221019_170406"
+__version__ = "20221021_081409"
 
 
 if len(sys.argv) < 2:
@@ -91,7 +91,7 @@ def load_config2():
     p.add('--output_destination', required=True, help='')
     p.add('--gzip', required=True, help='')
     p.add('--resume_mode', required=True, help='')
-    p.add('--max_file_size_mb', default='200', help='')
+    p.add('--max_file_size_mb', default='0', help='')
 
     global options
     options = p.parse_args()
@@ -502,8 +502,6 @@ def write_results_to_file(job_in,partition_in):
     else:
         file_name=file_path+"/"+partition_in["index"]+"_"+earliest
 
-
-
     empty_result=True
     file_number=0
     def get_new_file_name(file_name_in):
@@ -529,13 +527,33 @@ def write_results_to_file(job_in,partition_in):
 
         return f_out
 
+    def check_file_size(file_handle_in,check_size_loops_in):
+        # this function is used to change the number of loops at which we check the file size to balance accuracy with speed
+        # need to refactor to be more mathy and lest hacky
+        current_size_mb = file_handle_in.tell()/1024/1024
+        current_size_percent=(current_size_mb/int(options.max_file_size_mb))*100
+        divide_by=2
+        check_size_loops_return=check_size_loops_in
+        if current_size_percent>=95:
+            divide_by=int(abs(91-current_size_percent))+2
+            check_size_loops_return=int(check_size_loops_in/divide_by)
+        if check_size_loops_return<10:
+            check_size_loops_return=10
+        if current_size_percent>=98:
+            check_size_loops_return=5
+        if current_size_percent>=99.5:
+            check_size_loops_return=1
+
+        return check_size_loops_return,current_size_mb
+
+
+    check_size_loops=10000000000
+    if int(options.max_file_size_mb)>0:
+        check_size_loops=100*int(options.max_file_size_mb)
+        check_size_loops_orig=check_size_loops
+    
     f = open_file(output_file_temp)
-    #f = gzip.open(output_file_temp, 'wt')
-    #f = tempfile.mkstemp(dir=options.directory)
-    
-
-
-    
+    # need to refactor this scection to be more modular and readable
     try:
         reader = results.JSONResultsReader(job_in)
         i=0
@@ -546,20 +564,19 @@ def write_results_to_file(job_in,partition_in):
                 empty_result=False
                 #logging.debug("Non-Empty result")
                 print(result,file=f)
-                if i % 10000 == 0:
-                    current_size = f.tell()/1024/1024
-                    #print(f'Loop {i} The {output_file_temp} size is in mb',current_size)
+                if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
+                    check_size_loops,current_size=check_file_size(f,check_size_loops)
                     if current_size >= float(options.max_file_size_mb):
                         logging.info("Reached file size limit %s: ",current_size)
+                        check_size_loops=check_size_loops_orig
                         f.close()
                         
                         if file_number == 0:
                             file_number+=1
                             dummy,output_file=get_new_file_name(file_name)
                         
-
                         #logging.info("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
-                        logging.info("Result count for:%s is %s",output_file,i)
+                        logging.debug("Result count for:%s is %s",output_file,i)
                         os.rename(output_file_temp,output_file)
                         file_number+=1
                         output_file_temp,output_file=get_new_file_name(file_name)
@@ -580,8 +597,12 @@ def write_results_to_file(job_in,partition_in):
             f.close()
             os.remove(output_file_temp)
         else:
-            os.rename(output_file_temp,output_file)
-            f.close()
+            if f.tell() == 0:
+                f.close()
+                os.remove(output_file_temp)
+            else:
+                os.rename(output_file_temp,output_file)
+                f.close()
         return(i)
 
     
