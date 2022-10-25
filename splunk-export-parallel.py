@@ -13,12 +13,13 @@ import splunklib.results as results
 from time import sleep
 from splunk_hec import splunk_hec
 import configargparse
+import hashlib,secrets
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221021_102924"
+__version__ = "20221025_105603"
 
 
 if len(sys.argv) < 2:
@@ -82,7 +83,7 @@ def load_config():
     p.add('--parition_units', required=True, help='')
     p.add('--partition_interval', required=True, help='')
     p.add('--directory', required=True, help='')
-    p.add('--parallel_processes', required=True, help='')
+    p.add('--parallel_processes', required=False, help='',default=1)
     p.add('--partition_file_name', required=True, help='')
     p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
     p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
@@ -95,21 +96,33 @@ def load_config():
     global options
     options = p.parse_args()
 
+    options_hash = checksum_var(p.format_values())
+    return options_hash
+
     
 def get_globals():
     
     catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
+    job_name=options.job_name
     if options.incremental_mode:
         job_partition_name=options.job_name+'-'+datetime.now().strftime("%Y%m%d_%H%M%S")
     else:
         job_partition_name=options.job_name
-    job_partition_path=os.path.join(catalog_dir,job_partition_name)
+    job_path=os.path.join(catalog_dir,job_name)
+    job_partition_name=job_partition_name+'.json'
+    job_partition_path=os.path.join(job_path,job_partition_name)
+
+    jobs_file_path=os.path.join(job_path,job_name+'.jobs')
 
     global global_vars
     
     if 'global_vars' not in globals():
         global_vars={
+            'job_id':secrets.token_hex(nbytes=8),
             'catalog_dir':catalog_dir,
+            'job_name':job_name,
+            'job_path':job_path,
+            'jobs_file_path':jobs_file_path,
             'job_partition_name':job_partition_name,
             'job_partition_path':job_partition_path
             }
@@ -125,7 +138,7 @@ def create_catalog():
     pprint(global_vars)
     # catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
     create_output_dir(global_vars["catalog_dir"])
-    create_output_dir(global_vars["job_partition_path"])
+    create_output_dir(global_vars["job_path"])
 
 def build_search_string(partition_in):
     logging.info('build_search_string-start')
@@ -225,16 +238,31 @@ def write_resume_summary(partition_file_in):
         data["summary_data"]["start_time"]=datetime.now().isoformat()
         data["summary_data"]["status"] = 'resume'
 
+        i=1
         for search_partition in data["partitions"]:
             if search_partition["status"]!='complete':
                 search_partition["status"]='not started'
                 search_partition["pid"]=''
+                i+=1
 
         json_object = json.dumps(data, indent=4)
         f.seek(0)
         f.write(json_object)
         f.truncate()
+        return i
 
+
+def checksum_file(filename, hash_factory=hashlib.md5, chunk_num_blocks=128):
+    h = hash_factory()
+    with open(filename,'rb') as f: 
+        for chunk in iter(lambda: f.read(chunk_num_blocks*h.block_size), b''): 
+            h.update(chunk)
+    return h.hexdigest()
+
+def checksum_var(text_in):
+    var = text_in.encode('utf-8')
+    hashed_var = hashlib.md5(var).hexdigest()
+    return hashed_var
 
 def cleanup_failed_run(partition_file_in):
     logging.info('cleanup_failed_run-start')
@@ -250,14 +278,51 @@ def cleanup_failed_run(partition_file_in):
         if data["summary_data"]["status"]!='complete' and options.resume_mode=='resume':
             backup_file=partition_file_in+'bak'
             shutil.copy(partition_file_in, backup_file)
-            write_resume_summary(partition_file_in)
+            partition_count=write_resume_summary(partition_file_in)
             logging.info('cleanup_failed_run-ok to resume')
-            return True
+            return True,partition_count
         else:
             logging.info('cleanup_failed_run-do not resume')
-            return False
+            return False,0
 
-def write_search_partitions(date_array_in):
+def write_job_file(summary_data_in):
+    #job_data=[]
+    json_data = []
+    if os.path.exists(global_vars["jobs_file_path"]):
+        with open(global_vars["jobs_file_path"],'r+') as f:
+            json_data = json.load(f)
+            # pprint(dir(json_data))
+
+        # json_data['jobs'] = ''
+    pprint(json_data)
+    
+    job_summary = {
+        'job_id'        : summary_data_in["job_id"],
+        'options_hash'  : summary_data_in["options_hash"],
+        'start_time'    : summary_data_in["start_time"],
+        'end_time'    : summary_data_in["end_time"],
+        'status'    : summary_data_in["status"],
+        'partition_file':global_vars["job_partition_path"]
+    }
+    json_data.append(job_summary)
+    pprint(json_data)
+    # job_data.append(job_summary)
+
+    # json_data['jobs'].append(job_data)
+    json_doc=json.dumps(json_data, indent=None, sort_keys=False,separators =(",", ":"))   
+    json_doc=re.sub(r"^\[", r"[\n", json_doc)
+    json_doc=re.sub(r"\]$", r"\n]", json_doc)
+    json_doc=re.sub(r"},{", r"},\n{", json_doc)
+
+    
+    #result = [json.dumps(record) for record in job_summary] 
+    #pprint(result)
+    with open(global_vars["jobs_file_path"], "w") as outfile:
+        # print('\n'.join(json_doc),file=outfile)
+        print(json_doc,file=outfile)
+        # outfile.write(result)
+
+def write_search_partitions(date_array_in,options_hash_in):
     logging.info('write_search_partitions-start')
     index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array(date_array_in)
     json_data = {}
@@ -268,7 +333,7 @@ def write_search_partitions(date_array_in):
             i+=1
             
             search_partition={'id':i,
-                'earliest': entry[0].isoformat(),'latest':entry[1].isoformat(),
+                'earliest': entry[0].isoformat(),'latest':entry[1].isoformat(),'latest_returned':'',
                              'status':'not started','result_count':'','pid':''}
 
             sourcetype_str=''
@@ -286,6 +351,9 @@ def write_search_partitions(date_array_in):
                   'start_time': datetime.now().isoformat(),
                   'end_time': '',
                   'indexes':index_count,
+                  'options_hash':options_hash_in,
+                  'job_id':global_vars["job_id"],
+                  'controller_pid':os.getpid(),
                   'total_seconds': '',
                   'total_results': '0'}
 
@@ -298,18 +366,19 @@ def write_search_partitions(date_array_in):
     search_partitions=json.dumps(json_data, indent=2, sort_keys=False)
     #print(search_partitions)      
     
-    
-    with open(options.partition_file_name, "w") as outfile:
+    write_job_file(summary_data)
+
+    with open(global_vars["job_partition_path"], "w") as outfile:
         outfile.write(search_partitions)
         
     logging.info('write_search_partitions-end')
+    return int(summary_data["partition_count"])
 
 def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in):
     logging.info('update_partition_status-start')
     logging.info('result_count_in: %s',result_count_in)
     lock_in.acquire()
     with open(partition_file_in,'r+') as f:
-        #portalocker.lock(f, portalocker.LOCK_EX)
         data = json.load(f)
         search_partition_out=None
         for search_partition in data["partitions"]:
@@ -615,6 +684,7 @@ def write_results_to_file(job_in,partition_in):
                 #print(vars(job_in))
                 logging.debug("Empty result")
                 logging.debug("Diagnostic message: %s",result)
+                i=0
     except Exception as Argument:
         logging.exception('Write to file error')
     finally:
@@ -629,13 +699,12 @@ def write_results_to_file(job_in,partition_in):
             else:
                 os.rename(output_file_temp,output_file)
                 f.close()
+        logging.info('write_results-end')
         return(i)
 
     
     
     
-    #f.close()
-    logging.info('write_results-end')
 
         
 def connect():
@@ -659,25 +728,31 @@ def connect():
 
 def main():
     
-    load_config()
+    options_hash = load_config()
     
     get_globals()
-    pprint(global_vars)
+    #pprint(global_vars)
     
     set_logging_level()
-    partition_file=options.partition_file_name
+    #partition_file=options.partition_file_name
+    
     create_catalog()
-    quit()
-    should_resume=cleanup_failed_run(partition_file)
+    partition_file=global_vars["job_partition_path"]
+
+    
+    should_resume,part_count=cleanup_failed_run(partition_file)
 
     if not should_resume:
         date_array=explode_date_range(options.begin_date,options.end_date,
                                 options.parition_units,int(options.partition_interval))
-        write_search_partitions(date_array)
+        part_count=write_search_partitions(date_array,options_hash)
         create_output_dir(options.directory)
     
    
-    procs = int(options.parallel_processes)   # Number of processes to create
+    # procs = int(options.parallel_processes)   # Number of processes to create
+    procs = min(int(options.parallel_processes),part_count)   # Number of processes to create
+    logging.info('Number of processes: %s',procs)
+    
     lock = multiprocessing.Lock()
     jobs = []
     for i in range(0, procs):
