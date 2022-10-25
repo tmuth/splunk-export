@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221025_105603"
+__version__ = "20221025_111802"
 
 
 if len(sys.argv) < 2:
@@ -285,6 +285,34 @@ def cleanup_failed_run(partition_file_in):
             logging.info('cleanup_failed_run-do not resume')
             return False,0
 
+
+def format_jobs_json(json_in):
+    json_doc=json.dumps(json_in, indent=None, sort_keys=False,separators =(",", ":"))   
+    json_doc=re.sub(r"^\[", r"[\n", json_doc)
+    json_doc=re.sub(r"\]$", r"\n]", json_doc)
+    json_doc=re.sub(r"},{", r"},\n{", json_doc)
+    return json_doc
+
+def finalize_job_file(summary_in):
+    None
+    with open(global_vars["jobs_file_path"],'r+') as f:
+            json_data = json.load(f)
+
+    for job in json_data:
+            if job["job_id"]==global_vars["job_id"]:
+                
+                job["status"]='complete'
+                job["end_time"]=summary_in["end_time"]
+
+                break
+
+    json_data = json_data[-100:] # keep the newest 100 jobs in the .jobs file
+    json_doc = format_jobs_json(json_data)
+
+    with open(global_vars["jobs_file_path"], "w") as outfile:
+        # print('\n'.join(json_doc),file=outfile)
+        print(json_doc,file=outfile)
+
 def write_job_file(summary_data_in):
     #job_data=[]
     json_data = []
@@ -294,7 +322,6 @@ def write_job_file(summary_data_in):
             # pprint(dir(json_data))
 
         # json_data['jobs'] = ''
-    pprint(json_data)
     
     job_summary = {
         'job_id'        : summary_data_in["job_id"],
@@ -305,18 +332,10 @@ def write_job_file(summary_data_in):
         'partition_file':global_vars["job_partition_path"]
     }
     json_data.append(job_summary)
-    pprint(json_data)
-    # job_data.append(job_summary)
-
-    # json_data['jobs'].append(job_data)
-    json_doc=json.dumps(json_data, indent=None, sort_keys=False,separators =(",", ":"))   
-    json_doc=re.sub(r"^\[", r"[\n", json_doc)
-    json_doc=re.sub(r"\]$", r"\n]", json_doc)
-    json_doc=re.sub(r"},{", r"},\n{", json_doc)
-
+    #pprint(json_data)
+    json_doc = format_jobs_json(json_data)
     
-    #result = [json.dumps(record) for record in job_summary] 
-    #pprint(result)
+
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
         print(json_doc,file=outfile)
@@ -403,9 +422,11 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
 
 def finalize_partition_status(partition_file_in,lock_in):
     lock_in.acquire()
+    summary_data=[]
     with open(partition_file_in,'r+') as f:
         #portalocker.lock(f, portalocker.LOCK_EX)
         data = json.load(f)
+        summary_data=data["summary_data"]
         data["summary_data"]["end_time"]=datetime.now().isoformat()
         date_start=datetime.fromisoformat(data["summary_data"]["start_time"])
         date_end=datetime.fromisoformat(data["summary_data"]["end_time"])
@@ -418,6 +439,7 @@ def finalize_partition_status(partition_file_in,lock_in):
         f.write(json_object)
         f.truncate()
     lock_in.release()
+    finalize_job_file(summary_data)
         
 def get_search_partition(partition_file_in,lock_in):
     lock_in.acquire()
@@ -701,10 +723,6 @@ def write_results_to_file(job_in,partition_in):
                 f.close()
         logging.info('write_results-end')
         return(i)
-
-    
-    
-    
 
         
 def connect():
