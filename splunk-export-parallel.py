@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221025_111802"
+__version__ = "20221026_101944"
 
 
 if len(sys.argv) < 2:
@@ -78,7 +78,6 @@ def load_config():
     p.add('--end_date', required=True, help='')
     p.add('--extra', required=True, help='')
 
-
     p.add('--log_level', required=True, help='')
     p.add('--parition_units', required=True, help='')
     p.add('--partition_interval', required=True, help='')
@@ -92,6 +91,7 @@ def load_config():
     p.add('--resume_mode', required=False, help='', default=False)
     p.add('--incremental_mode', required=False, help='', default=False)
     p.add('--max_file_size_mb', default='0', help='')
+    p.add('--keep_n_jobs', default=10, help='Number of previous partition files to keep')
 
     global options
     options = p.parse_args()
@@ -101,13 +101,13 @@ def load_config():
 
     
 def get_globals():
-    
+    job_id=datetime.now().strftime('%Y%m%d_%H%M%S%f')[:-3]
     catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
     job_name=options.job_name
-    if options.incremental_mode:
-        job_partition_name=options.job_name+'-'+datetime.now().strftime("%Y%m%d_%H%M%S")
-    else:
-        job_partition_name=options.job_name
+    # if options.incremental_mode:
+    job_partition_name=options.job_name+'-'+job_id
+    # else:
+        # job_partition_name=options.job_name
     job_path=os.path.join(catalog_dir,job_name)
     job_partition_name=job_partition_name+'.json'
     job_partition_path=os.path.join(job_path,job_partition_name)
@@ -118,7 +118,8 @@ def get_globals():
     
     if 'global_vars' not in globals():
         global_vars={
-            'job_id':secrets.token_hex(nbytes=8),
+            # 'job_id':secrets.token_hex(nbytes=8),
+            'job_id': job_id,
             'catalog_dir':catalog_dir,
             'job_name':job_name,
             'job_path':job_path,
@@ -267,7 +268,7 @@ def checksum_var(text_in):
 def cleanup_failed_run(partition_file_in):
     logging.info('cleanup_failed_run-start')
     if not os.path.isfile(partition_file_in):
-        return False
+        return False,0
     else:
         data={}
         with open(partition_file_in,'r') as f:
@@ -293,12 +294,28 @@ def format_jobs_json(json_in):
     json_doc=re.sub(r"},{", r"},\n{", json_doc)
     return json_doc
 
+def cleanup_old_jobs(job_list_in):
+    logging.info('Deleting %s old jobs',len(job_list_in))
+    for job in job_list_in:
+        # print(job["job_id"])
+        partition_file=os.path.join(global_vars["job_path"],job["partition_file"])
+        logging.info('Partition file: %s',partition_file)
+        if os.path.exists(partition_file):
+            logging.debug(partition_file)
+            os.remove(partition_file)
+
 def finalize_job_file(summary_in):
-    None
     with open(global_vars["jobs_file_path"],'r+') as f:
             json_data = json.load(f)
+    # keep_n_jobs
 
-    for job in json_data:
+    delete_first_n_jobs=len(json_data)-options.keep_n_jobs
+    delete_jobs=json_data[:delete_first_n_jobs]
+    cleanup_old_jobs(delete_jobs)
+
+    keep_jobs=json_data[-options.keep_n_jobs:]
+
+    for job in keep_jobs:
             if job["job_id"]==global_vars["job_id"]:
                 
                 job["status"]='complete'
@@ -306,8 +323,7 @@ def finalize_job_file(summary_in):
 
                 break
 
-    json_data = json_data[-100:] # keep the newest 100 jobs in the .jobs file
-    json_doc = format_jobs_json(json_data)
+    json_doc = format_jobs_json(keep_jobs)
 
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
@@ -329,7 +345,7 @@ def write_job_file(summary_data_in):
         'start_time'    : summary_data_in["start_time"],
         'end_time'    : summary_data_in["end_time"],
         'status'    : summary_data_in["status"],
-        'partition_file':global_vars["job_partition_path"]
+        'partition_file':global_vars["job_partition_name"]
     }
     json_data.append(job_summary)
     #pprint(json_data)
@@ -757,9 +773,8 @@ def main():
     create_catalog()
     partition_file=global_vars["job_partition_path"]
 
-    
     should_resume,part_count=cleanup_failed_run(partition_file)
-
+    
     if not should_resume:
         date_array=explode_date_range(options.begin_date,options.end_date,
                                 options.parition_units,int(options.partition_interval))
