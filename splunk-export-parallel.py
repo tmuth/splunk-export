@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221026_101944"
+__version__ = "20221027_105756"
 
 
 if len(sys.argv) < 2:
@@ -102,6 +102,7 @@ def load_config():
     
 def get_globals():
     job_id=datetime.now().strftime('%Y%m%d_%H%M%S%f')[:-3]
+    # catalog_dir=os.path.join(options.job_location,'splunk-export-catalog')
     catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
     job_name=options.job_name
     # if options.incremental_mode:
@@ -112,7 +113,8 @@ def get_globals():
     job_partition_name=job_partition_name+'.json'
     job_partition_path=os.path.join(job_path,job_partition_name)
 
-    jobs_file_path=os.path.join(job_path,job_name+'.jobs')
+    # jobs_file_path=os.path.join(job_path,job_name+'.jobs')
+    jobs_file_path=get_jobs_file_path()
 
     global global_vars
     
@@ -265,9 +267,68 @@ def checksum_var(text_in):
     hashed_var = hashlib.md5(var).hexdigest()
     return hashed_var
 
+def get_catalog_path():
+    catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
+    # catalog_dir=os.path.join(options.job_location,'splunk-export-catalog')
+    # job_name=options.job_name
+    job_name=options.job_name
+    job_path=os.path.join(catalog_dir,job_name)
+    return job_path
+
+def get_jobs_file_path():
+    job_name=options.job_name
+    job_path=get_catalog_path()
+    jobs_file_path=os.path.join(job_path,job_name+'.jobs')
+    return jobs_file_path
+
+def check_previous_run_succeeded():
+    jobs_file_path=get_jobs_file_path()
+    logging.debug("jobs_file_path: %s",jobs_file_path)
+    if not os.path.isfile(jobs_file_path):
+        logging.debug("The job file doesn't exist so it's the first run of a job")
+        return True,None
+    
+    with open(jobs_file_path,'r') as f:
+        json_data = json.load(f)
+    # json_data = json.load(data)
+    last_job=json_data[-1]
+
+    # print(last_job["status"])
+
+    if last_job["status"] != "complete":
+        logging.debug("The last run did not complete")
+        partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
+
+        failed_job = json_data[-1].copy()
+        json_data[-1]['status']='failed'
+        json_data[-1]['job_id']=json_data[-1]['job_id']+'.0'
+        failed_job['status']='resume'
+        json_data.append(failed_job)
+        json_data=format_jobs_json(json_data)
+
+        failed_job_data={
+            'job_id':failed_job['job_id'],
+            'partition_file':partition_file
+        }
+
+        with open(jobs_file_path, "w") as outfile:
+        # print('\n'.join(json_doc),file=outfile)
+            print(json_data,file=outfile)
+
+
+        return False,failed_job_data
+    else:
+        logging.debug("The last run did complete")
+        return True,None
+
 def cleanup_failed_run(partition_file_in):
     logging.info('cleanup_failed_run-start')
+    logging.info(partition_file_in)
+    if options.resume_mode!='resume':
+        return False,0
+
     if not os.path.isfile(partition_file_in):
+        logging.debug("Partition file does not exist: %s",partition_file_in)
         return False,0
     else:
         data={}
@@ -277,7 +338,7 @@ def cleanup_failed_run(partition_file_in):
         logging.info('status: %s',data["summary_data"]["status"])
         logging.info('resume_mode: %s',options.resume_mode)
         if data["summary_data"]["status"]!='complete' and options.resume_mode=='resume':
-            backup_file=partition_file_in+'bak'
+            backup_file=partition_file_in+'.bak'
             shutil.copy(partition_file_in, backup_file)
             partition_count=write_resume_summary(partition_file_in)
             logging.info('cleanup_failed_run-ok to resume')
@@ -304,26 +365,37 @@ def cleanup_old_jobs(job_list_in):
             logging.debug(partition_file)
             os.remove(partition_file)
 
+def resume_job_file():
+    None
+
 def finalize_job_file(summary_in):
     with open(global_vars["jobs_file_path"],'r+') as f:
             json_data = json.load(f)
     # keep_n_jobs
 
     delete_first_n_jobs=len(json_data)-options.keep_n_jobs
+    logging.debug('Delete %s jobs',delete_first_n_jobs )
     delete_jobs=json_data[:delete_first_n_jobs]
     cleanup_old_jobs(delete_jobs)
 
-    keep_jobs=json_data[-options.keep_n_jobs:]
+    keep_jobs=json_data[-options.keep_n_jobs:].copy()
+    logging.debug('Keep %s jobs',len(keep_jobs) )
 
-    for job in keep_jobs:
-            if job["job_id"]==global_vars["job_id"]:
-                
-                job["status"]='complete'
-                job["end_time"]=summary_in["end_time"]
-
-                break
+    keep_jobs[-1]["status"]='complete'
+    keep_jobs[-1]["end_time"]=summary_in["end_time"]
+    # for job in keep_jobs:
+    #         if job["job_id"]==global_vars["job_id"]:
+    #             logging.debug('Job id %s',job["job_id"] )
+    #             job["status"]='complete'
+    #             job["end_time"]=summary_in["end_time"]
+    #             break
 
     json_doc = format_jobs_json(keep_jobs)
+    
+    # jobs_file=os.path.abspath(global_vars["jobs_file_path"])
+    # partition_file=os.path.abspath(global_vars["partition_file_path"])
+    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
 
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
@@ -546,7 +618,7 @@ def dispatch_searches(partition_file_in,options_in,lock_in):
             search_string=build_search_string(partition_out)
             service=connect()
             job=search_export(service,search_string,partition_out)
-            #set_logging_level('DEBUG')
+            set_logging_level()
             #print_results(job)
             result_count=write_results(job,partition_out)
             update_partition_status(partition_file_in,partition_out,'complete',lock_in,result_count)
@@ -696,11 +768,12 @@ def write_results_to_file(job_in,partition_in):
             if isinstance(result, dict):
                 empty_result=False
                 #logging.debug("Non-Empty result")
+                logging.debug(result["_time"])
                 print(result,file=f)
                 if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
                     check_size_loops,current_size=check_file_size(f,check_size_loops)
                     if current_size >= float(options.max_file_size_mb):
-                        logging.info("Reached file size limit %s: ",current_size)
+                        logging.debug("Reached file size limit %s: ",current_size)
                         check_size_loops=check_size_loops_orig
                         f.close()
                         
@@ -708,12 +781,11 @@ def write_results_to_file(job_in,partition_in):
                             file_number+=1
                             dummy,output_file=get_new_file_name(file_name)
                         
-                        #logging.info("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
                         logging.debug("Result count for:%s is %s",output_file,i)
                         os.rename(output_file_temp,output_file)
                         file_number+=1
                         output_file_temp,output_file=get_new_file_name(file_name)
-                        logging.info("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
+                        logging.debug("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
                         f = open_file(output_file_temp)
                         
 
@@ -768,13 +840,22 @@ def main():
     #pprint(global_vars)
     
     set_logging_level()
-    #partition_file=options.partition_file_name
     
     create_catalog()
-    partition_file=global_vars["job_partition_path"]
+    previous_run_succeeded,previous_job_data=check_previous_run_succeeded()
+    print(previous_run_succeeded)
+    #print(previous_partition_file)
+    
+
+    if previous_run_succeeded:
+        partition_file=global_vars["job_partition_path"]
+    else:
+        partition_file=previous_job_data['partition_file']
+        global_vars["job_id"]=previous_job_data['job_id']
+    
 
     should_resume,part_count=cleanup_failed_run(partition_file)
-    
+    # quit()
     if not should_resume:
         date_array=explode_date_range(options.begin_date,options.end_date,
                                 options.parition_units,int(options.partition_interval))
