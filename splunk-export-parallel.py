@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221027_105756"
+__version__ = "20221027_124257"
 
 
 if len(sys.argv) < 2:
@@ -90,6 +90,7 @@ def load_config():
     p.add('--gzip', required=True, help='')
     p.add('--resume_mode', required=False, help='', default=False)
     p.add('--incremental_mode', required=False, help='', default=False)
+    p.add('--incremental_time_source', required=False, help='file | search', default="file")
     p.add('--max_file_size_mb', default='0', help='')
     p.add('--keep_n_jobs', default=10, help='Number of previous partition files to keep')
 
@@ -769,6 +770,8 @@ def write_results_to_file(job_in,partition_in):
                 empty_result=False
                 #logging.debug("Non-Empty result")
                 logging.debug(result["_time"])
+                time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
+                logging.debug(time_stamp)
                 print(result,file=f)
                 if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
                     check_size_loops,current_size=check_file_size(f,check_size_loops)
