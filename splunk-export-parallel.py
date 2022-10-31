@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221027_124257"
+__version__ = "20221031_095346"
 
 
 if len(sys.argv) < 2:
@@ -339,7 +339,15 @@ def cleanup_failed_run(partition_file_in):
         logging.info('status: %s',data["summary_data"]["status"])
         logging.info('resume_mode: %s',options.resume_mode)
         if data["summary_data"]["status"]!='complete' and options.resume_mode=='resume':
-            backup_file=partition_file_in+'.bak'
+            i=1
+            while True:
+                backup_file=partition_file_in+'.'+str(i)+'.bak'
+                if os.path.exists(backup_file):
+                    i+=1
+                else:
+                    break
+            logging.debug(backup_file)
+            # backup_file=partition_file_in+'.bak'
             shutil.copy(partition_file_in, backup_file)
             partition_count=write_resume_summary(partition_file_in)
             logging.info('cleanup_failed_run-ok to resume')
@@ -566,6 +574,8 @@ def search_export(service_in,search_in,partition_in):
 
     logging.debug(service_in)
     logging.debug(search_in)
+    logging.debug(partition_in["earliest"])
+    logging.debug(partition_in["latest"])
     #pprint(search_in)
     #search_id="splunk_export_search_"+str(round(random.uniform(10000000, 90000000),4))
     search_id=str(round(random.uniform(10000000, 90000000),4))
@@ -652,9 +662,6 @@ def send_results_to_hec(job_in,partition_in):
                         use_hec_tls=use_hec_tls,hec_tls_verify=hec_tls_verify,
                         logger=logging,input_type=input_type )
 
-    index = 'hec_test'
-    sourcetype = '_json'
-    source = 'hec:test:events'
     
 
     payload = {}
@@ -769,9 +776,9 @@ def write_results_to_file(job_in,partition_in):
             if isinstance(result, dict):
                 empty_result=False
                 #logging.debug("Non-Empty result")
-                logging.debug(result["_time"])
+                #logging.debug(result["_time"])
                 time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
-                logging.debug(time_stamp)
+                #logging.debug(time_stamp)
                 print(result,file=f)
                 if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
                     check_size_loops,current_size=check_file_size(f,check_size_loops)
