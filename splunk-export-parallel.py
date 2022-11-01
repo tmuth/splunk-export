@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221031_095346"
+__version__ = "20221101_101400"
 
 
 if len(sys.argv) < 2:
@@ -287,7 +287,7 @@ def check_previous_run_succeeded():
     logging.debug("jobs_file_path: %s",jobs_file_path)
     if not os.path.isfile(jobs_file_path):
         logging.debug("The job file doesn't exist so it's the first run of a job")
-        return True,None
+        return True
     
     with open(jobs_file_path,'r') as f:
         json_data = json.load(f)
@@ -298,63 +298,104 @@ def check_previous_run_succeeded():
 
     if last_job["status"] != "complete":
         logging.debug("The last run did not complete")
-        partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
+        # partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
 
-        failed_job = json_data[-1].copy()
-        json_data[-1]['status']='failed'
-        json_data[-1]['job_id']=json_data[-1]['job_id']+'.0'
-        failed_job['status']='resume'
-        json_data.append(failed_job)
-        json_data=format_jobs_json(json_data)
+        # failed_job = json_data[-1].copy()
+        # json_data[-1]['status']='failed'
+        # json_data[-1]['job_id']=json_data[-1]['job_id']+'.0'
+        # failed_job['status']='resume'
+        # json_data.append(failed_job)
+        # json_data=format_jobs_json(json_data)
 
-        failed_job_data={
-            'job_id':failed_job['job_id'],
-            'partition_file':partition_file
-        }
+        # failed_job_data={
+        #     'job_id':failed_job['job_id'],
+        #     'partition_file':partition_file
+        # }
 
-        with open(jobs_file_path, "w") as outfile:
-        # print('\n'.join(json_doc),file=outfile)
-            print(json_data,file=outfile)
+        # with open(jobs_file_path, "w") as outfile:
+        # # print('\n'.join(json_doc),file=outfile)
+        #     print(json_data,file=outfile)
 
 
-        return False,failed_job_data
+        # return False,failed_job_data
+        return False
     else:
         logging.debug("The last run did complete")
-        return True,None
+        return True
 
 def cleanup_failed_run(partition_file_in):
     logging.info('cleanup_failed_run-start')
-    logging.info(partition_file_in)
+    # logging.info(partition_file_in)
+
+
+    def backup_partition_file(previous_part_file_in,fail_job_id_in):
+        failed_job_partition_name=options.job_name+'-'+fail_job_id_in+'.json'
+        failed_job_partition_path=os.path.join(global_vars["job_path"],failed_job_partition_name)
+        previous_part_path=os.path.join(global_vars["job_path"],previous_part_file_in)
+        shutil.copy(previous_part_path, failed_job_partition_path)
+        return failed_job_partition_name
+
     if options.resume_mode!='resume':
         return False,0
 
-    if not os.path.isfile(partition_file_in):
-        logging.debug("Partition file does not exist: %s",partition_file_in)
+    # if not os.path.isfile(partition_file_in):
+    #     logging.debug("Partition file does not exist: %s",partition_file_in)
+    #     return False,0
+    # else:
+    # cleanup jobs file
+    jobs_file_path=get_jobs_file_path()
+    logging.debug("jobs_file_path: %s",jobs_file_path)
+    if not os.path.isfile(jobs_file_path):
         return False,0
     else:
-        data={}
-        with open(partition_file_in,'r') as f:
-            data = json.load(f)
+        with open(jobs_file_path,'r') as f:
+            json_data = json.load(f)
 
-        logging.info('status: %s',data["summary_data"]["status"])
-        logging.info('resume_mode: %s',options.resume_mode)
-        if data["summary_data"]["status"]!='complete' and options.resume_mode=='resume':
-            i=1
+        last_job=json_data[-1]
+        if last_job["status"] != "complete":
+            logging.debug("The last run did not complete")
+            partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
+
+            failed_job = json_data[-1].copy()
+
+            last_job_id=json_data[-1]["job_id"]
+            i=0
             while True:
-                backup_file=partition_file_in+'.'+str(i)+'.bak'
-                if os.path.exists(backup_file):
-                    i+=1
-                else:
+                print(i)
+                new_last_job_id=last_job_id+'.'+str(i)
+                if not any(d['job_id'] == new_last_job_id for d in json_data):
+                    # last_job_id=x
+                    json_data[-1]['job_id']=new_last_job_id
                     break
-            logging.debug(backup_file)
-            # backup_file=partition_file_in+'.bak'
-            shutil.copy(partition_file_in, backup_file)
-            partition_count=write_resume_summary(partition_file_in)
-            logging.info('cleanup_failed_run-ok to resume')
-            return True,partition_count
+                if i > 20:
+                    break
+                i+=1
+
+            json_data[-1]['status']='failed'
+            
+            failed_job['status']='resume'
+            
+            previous_partition_name=json_data[-1]['partition_file']
+
+            backup_partition_file=backup_partition_file(previous_partition_name,new_last_job_id)
+            json_data[-1]['partition_file']=backup_partition_file
+            json_data.append(failed_job)
+
+            failed_job_data={
+                'job_id':failed_job['job_id'],
+                'partition_file':partition_file
+            }
+            json_doc=format_jobs_json(json_data)
+            with open(jobs_file_path, "w") as outfile:
+            # print('\n'.join(json_doc),file=outfile)
+                print(json_doc,file=outfile)
+
+
+            return False,failed_job_data
         else:
-            logging.info('cleanup_failed_run-do not resume')
-            return False,0
+            logging.debug("The last run did complete")
+            return True,None
+
 
 
 def format_jobs_json(json_in):
@@ -852,7 +893,7 @@ def main():
     set_logging_level()
     
     create_catalog()
-    previous_run_succeeded,previous_job_data=check_previous_run_succeeded()
+    previous_run_succeeded=check_previous_run_succeeded()
     print(previous_run_succeeded)
     #print(previous_partition_file)
     
@@ -860,11 +901,14 @@ def main():
     if previous_run_succeeded:
         partition_file=global_vars["job_partition_path"]
     else:
-        partition_file=previous_job_data['partition_file']
-        global_vars["job_id"]=previous_job_data['job_id']
+        
+        # partition_file=previous_job_data['partition_file']
+        # global_vars["job_id"]=previous_job_data['job_id']
+        partition_file=global_vars["job_partition_path"]
+        should_resume,part_count=cleanup_failed_run(partition_file)
     
 
-    should_resume,part_count=cleanup_failed_run(partition_file)
+    
     # quit()
     if not should_resume:
         date_array=explode_date_range(options.begin_date,options.end_date,
