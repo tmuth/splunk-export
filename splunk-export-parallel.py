@@ -19,7 +19,7 @@ import hashlib,secrets
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221101_101400"
+__version__ = "20221101_125526"
 
 
 if len(sys.argv) < 2:
@@ -81,7 +81,7 @@ def load_config():
     p.add('--log_level', required=True, help='')
     p.add('--parition_units', required=True, help='')
     p.add('--partition_interval', required=True, help='')
-    p.add('--directory', required=True, help='')
+    p.add('--directory', required=False, help='Directory to write data files to',default='../')
     p.add('--parallel_processes', required=False, help='',default=1)
     p.add('--partition_file_name', required=True, help='')
     p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
@@ -116,6 +116,7 @@ def get_globals():
 
     # jobs_file_path=os.path.join(job_path,job_name+'.jobs')
     jobs_file_path=get_jobs_file_path()
+    output_directory=os.path.join(options.directory,options.job_name)
 
     global global_vars
     
@@ -128,7 +129,8 @@ def get_globals():
             'job_path':job_path,
             'jobs_file_path':jobs_file_path,
             'job_partition_name':job_partition_name,
-            'job_partition_path':job_partition_path
+            'job_partition_path':job_partition_path,
+            'output_directory': output_directory
             }
     return None
 
@@ -656,11 +658,13 @@ def search(service_in,search_in,earliest_in,latest_in):
 
     return job
 
-def dispatch_searches(partition_file_in,options_in,lock_in):
+def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
     
     logging.info('dispatch_searches-start')
     global options
     options=options_in
+    global global_vars
+    global_vars=global_vars_in
     set_logging_level()
     while True:
     #while False:
@@ -745,16 +749,18 @@ def write_results_to_file(job_in,partition_in):
     
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
-    file_path=options.directory+'/'+partition_in["index"]
+    file_path=os.path.join(global_vars["output_directory"],partition_in["index"])
+    # file_path=options.directory+'/'+partition_in["index"]
     create_output_dir(file_path)
 
    # if partition_in["sourcetype"]:
     if "sourcetype" in partition_in:
-        file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+        # file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+        file_path=os.path.join(global_vars["output_directory"],partition_in["index"],partition_in["sourcetype"])
         create_output_dir(file_path)
-        file_name=file_path+"/"+partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest
+        file_name=os.path.join(file_path,partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest)
     else:
-        file_name=file_path+"/"+partition_in["index"]+"_"+earliest
+        file_name=os.path.join(file_path,partition_in["index"]+"_"+earliest)
 
     empty_result=True
     file_number=0
@@ -895,9 +901,9 @@ def main():
     create_catalog()
     previous_run_succeeded=check_previous_run_succeeded()
     print(previous_run_succeeded)
-    #print(previous_partition_file)
-    
 
+    
+    should_resume=False
     if previous_run_succeeded:
         partition_file=global_vars["job_partition_path"]
     else:
@@ -914,7 +920,7 @@ def main():
         date_array=explode_date_range(options.begin_date,options.end_date,
                                 options.parition_units,int(options.partition_interval))
         part_count=write_search_partitions(date_array,options_hash)
-        create_output_dir(options.directory)
+        create_output_dir(global_vars["output_directory"])
     
    
     # procs = int(options.parallel_processes)   # Number of processes to create
@@ -924,7 +930,7 @@ def main():
     lock = multiprocessing.Lock()
     jobs = []
     for i in range(0, procs):
-        process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,options,lock)))
+        process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,options,lock,global_vars)))
         jobs.append(process)
 
     for j in jobs:
