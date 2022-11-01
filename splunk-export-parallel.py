@@ -13,13 +13,13 @@ import splunklib.results as results
 from time import sleep
 from splunk_hec import splunk_hec
 import configargparse
-import hashlib,secrets
+import hashlib,secrets,csv
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221101_125526"
+__version__ = "20221101_132343"
 
 
 if len(sys.argv) < 2:
@@ -88,6 +88,7 @@ def load_config():
     p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
     p.add('--output_destination', required=True, help='')
     p.add('--gzip', required=True, help='')
+    p.add('--output_format', required=False, help='json | raw | csv',default='json')
     p.add('--resume_mode', required=False, help='', default=False)
     p.add('--incremental_mode', required=False, help='', default=False)
     p.add('--incremental_time_source', required=False, help='file | search', default="file")
@@ -766,11 +767,20 @@ def write_results_to_file(job_in,partition_in):
     file_number=0
     def get_new_file_name(file_name_in):
         version_extension=''
+        output_extension=''
+        output_format=options.output_format.lower()
+        if output_format=='json':
+            output_extension='.json'
+        elif output_format=='raw':
+            output_extension='.txt'
+        elif output_format=='csv':
+            output_extension='.csv'
+
         if file_number > 0:
             version_extension='.'+str(file_number)
         output_file_temp_local=file_name_in+version_extension+".tmp"
         output_file_temp_local=os.path.normpath(output_file_temp_local)
-        output_file_local=file_name_in+version_extension+".json"
+        output_file_local=file_name_in+version_extension+output_extension
         output_file_local=os.path.normpath(output_file_local)
 
         return output_file_temp_local,output_file_local
@@ -813,10 +823,14 @@ def write_results_to_file(job_in,partition_in):
         check_size_loops_orig=check_size_loops
     
     f = open_file(output_file_temp)
+    output_format=options.output_format.lower()
+    if output_format=='csv':
+        csv_writer = csv.writer(f)
     # need to refactor this scection to be more modular and readable
     try:
         reader = results.JSONResultsReader(job_in)
         i=0
+        counter_per_file=0
         for result in reader:
             
             i+=1
@@ -826,7 +840,23 @@ def write_results_to_file(job_in,partition_in):
                 #logging.debug(result["_time"])
                 time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
                 #logging.debug(time_stamp)
-                print(result,file=f)
+
+                
+                if output_format=='json':
+                    print(result,file=f)
+                elif output_format=='raw':
+                    print(result["_raw"],file=f)
+                elif output_format=='csv':
+                    if counter_per_file == 0:
+                    # Write CSV Headers
+                        header = result.keys()
+                        csv_writer.writerow(header)
+
+                    # Write CSV data
+                    csv_writer.writerow(result.values())
+
+
+                counter_per_file+=1
                 if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
                     check_size_loops,current_size=check_file_size(f,check_size_loops)
                     if current_size >= float(options.max_file_size_mb):
@@ -844,6 +874,7 @@ def write_results_to_file(job_in,partition_in):
                         output_file_temp,output_file=get_new_file_name(file_name)
                         logging.debug("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
                         f = open_file(output_file_temp)
+                        counter_per_file=0
                         
 
             elif isinstance(result, results.Message):
