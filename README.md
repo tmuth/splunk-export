@@ -12,7 +12,8 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 - JSON
 - gzipped JSON
 - JSON over HEC
-- CSV (coming soon)
+- CSV
+- RAW
 - Parquet (coming soon)
 
 ## Features
