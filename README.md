@@ -34,3 +34,28 @@ Sample export with an index size of 12 GB containing 30 million events.
 ### htop of splunk-parallel-export.py with 12 processes
 ![htop of splunk-parallel-export.py with 12 processes](https://raw.githubusercontent.com/tmuth/splunk-export/main/images/htop-12-processes.png)
 
+## Sample Output Structure
+```
+tmuth$ tree cloud1/
+cloud1/
+└── _internal
+    ├── splunk_btool
+    │   ├── _internal_splunk_btool_2022-11-01T00-00-00.json
+    │   └── _internal_splunk_btool_2022-11-02T00-00-00.json
+    ├── splunk_python
+    │   ├── _internal_splunk_python_2022-11-01T00-00-00.json
+    │   └── _internal_splunk_python_2022-11-02T00-00-00.json
+    ├── splunkd
+    │   ├── _internal_splunkd_2022-11-01T00-00-00.json
+    │   └── _internal_splunkd_2022-11-02T00-00-00.json
+    ├── splunkd_access
+    │   ├── _internal_splunkd_access_2022-11-01T00-00-00.json
+    │   └── _internal_splunkd_access_2022-11-02T00-00-00.json
+    ├── splunkd_remote_searches
+    │   ├── _internal_splunkd_remote_searches_2022-11-01T00-00-00.json
+    │   └── _internal_splunkd_remote_searches_2022-11-02T00-00-00.json
+    └── splunkd_ui_access
+        ├── _internal_splunkd_ui_access_2022-11-01T00-00-00.json
+        └── _internal_splunkd_ui_access_2022-11-02T00-00-00.json
+  ```
+
