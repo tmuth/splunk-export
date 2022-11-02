@@ -19,7 +19,7 @@ import hashlib,secrets,csv
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221101_132343"
+__version__ = "20221102_130358"
 
 
 if len(sys.argv) < 2:
@@ -99,6 +99,7 @@ def load_config():
     options = p.parse_args()
 
     options_hash = checksum_var(p.format_values())
+    print(options)
     return options_hash
 
     
@@ -142,7 +143,7 @@ def create_output_dir(path_in):
         os.makedirs(path_new)
 
 def create_catalog():
-    pprint(global_vars)
+    # pprint(global_vars)
     # catalog_dir=os.path.join(options.job_location,'.splunk-export-catalog')
     create_output_dir(global_vars["catalog_dir"])
     create_output_dir(global_vars["job_path"])
@@ -301,26 +302,6 @@ def check_previous_run_succeeded():
 
     if last_job["status"] != "complete":
         logging.debug("The last run did not complete")
-        # partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
-
-        # failed_job = json_data[-1].copy()
-        # json_data[-1]['status']='failed'
-        # json_data[-1]['job_id']=json_data[-1]['job_id']+'.0'
-        # failed_job['status']='resume'
-        # json_data.append(failed_job)
-        # json_data=format_jobs_json(json_data)
-
-        # failed_job_data={
-        #     'job_id':failed_job['job_id'],
-        #     'partition_file':partition_file
-        # }
-
-        # with open(jobs_file_path, "w") as outfile:
-        # # print('\n'.join(json_doc),file=outfile)
-        #     print(json_data,file=outfile)
-
-
-        # return False,failed_job_data
         return False
     else:
         logging.debug("The last run did complete")
@@ -482,7 +463,34 @@ def write_job_file(summary_data_in):
         print(json_doc,file=outfile)
         # outfile.write(result)
 
-def write_search_partitions(date_array_in,options_hash_in):
+def get_previous_run_latest_dates(new_partitions_in):
+    json_data = []
+    if os.path.exists(global_vars["jobs_file_path"]):
+        logging.debug('jobs_file_path: %s',global_vars["jobs_file_path"])
+        with open(global_vars["jobs_file_path"],'r+') as f:
+            json_data = json.load(f)
+        previous_job = json_data[-1].copy()
+        previous_partition_file=os.path.join(global_vars["job_path"],previous_job["partition_file"])
+        previous_partitions=[]
+        with open(previous_partition_file,'r+') as f:
+            previous_partitions = json.load(f)
+
+        updated_partitions=new_partitions_in
+
+        for u in updated_partitions:
+            #pprint(u)
+            for p in previous_partitions["partitions"]:
+                # pprint(p)
+                if u["index"]==p["index"] and u["sourcetype"]==p["sourcetype"] and \
+                    p["latest_returned"]:
+                    u["earliest"]=p["latest_returned"]
+                    u["latest"]=datetime.now().isoformat()
+
+        return updated_partitions
+
+
+
+def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded_in):
     logging.info('write_search_partitions-start')
     index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array(date_array_in)
     json_data = {}
@@ -505,6 +513,15 @@ def write_search_partitions(date_array_in,options_hash_in):
 
             result_list.append(search_partition)
     
+
+    # update with incremental earliest
+    if options.incremental_mode.lower() =='true' and options.incremental_time_source.lower()=='file'\
+         and previous_run_succeeded_in:
+        updated_partitions=get_previous_run_latest_dates(result_list)
+        # pprint(updated_partitions)
+        result_list=updated_partitions
+
+
     summary_data={'partition_count': i,
                   'complete_count': 0,
                   'status': 'starting',
@@ -530,13 +547,16 @@ def write_search_partitions(date_array_in,options_hash_in):
 
     with open(global_vars["job_partition_path"], "w") as outfile:
         outfile.write(search_partitions)
-        
+    
+    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
     logging.info('write_search_partitions-end')
     return int(summary_data["partition_count"])
 
-def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in):
-    logging.info('update_partition_status-start')
-    logging.info('result_count_in: %s',result_count_in)
+def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in,last_date_in):
+    logging.debug('update_partition_status-start')
+    logging.debug('result_count_in: %s',result_count_in)
+    logging.debug('last_date_in: %s',last_date_in)
     lock_in.acquire()
     with open(partition_file_in,'r+') as f:
         data = json.load(f)
@@ -546,6 +566,9 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
                 #pprint(search_partition["earliest"])
                 search_partition["status"]=status_in
                 search_partition["result_count"]=result_count_in
+                if options.incremental_mode.lower()=='true' and options.incremental_time_source.lower()=='file' and last_date_in is not None:
+                    search_partition["latest_returned"]=last_date_in.isoformat()
+                
                 #return search_partition
                 break
                 
@@ -677,8 +700,8 @@ def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
             job=search_export(service,search_string,partition_out)
             set_logging_level()
             #print_results(job)
-            result_count=write_results(job,partition_out)
-            update_partition_status(partition_file_in,partition_out,'complete',lock_in,result_count)
+            results=write_results(job,partition_out)
+            update_partition_status(partition_file_in,partition_out,'complete',lock_in,results["count"],results["last_time_stamp"])
             #job.cancel()
         else:
             break
@@ -709,7 +732,7 @@ def send_results_to_hec(job_in,partition_in):
                         logger=logging,input_type=input_type )
 
     
-
+    last_time_stamp=None
     payload = {}
     try:
         reader = results.JSONResultsReader(job_in)
@@ -721,6 +744,8 @@ def send_results_to_hec(job_in,partition_in):
             if isinstance(result, dict):
                 # Note dateutil.parser.parse() took double the time for 90k events
                 time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z').strftime('%s')
+                if options.incremental_mode and options.incremental_time_source=='file':
+                    last_time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
                 
 
                 splhec.set_request_params({'_time':time_stamp,'index':result["index"], 'sourcetype':result["sourcetype"], 'source':result["source"]})
@@ -741,8 +766,8 @@ def send_results_to_hec(job_in,partition_in):
     finally:
         logging.debug("Result count: %s",i)
         splhec.stop_threads_and_processing()
-        
-        return i
+        result_summary={'count':i,'last_time_stamp':last_time_stamp}
+        return result_summary
 
 
 def write_results_to_file(job_in,partition_in):
@@ -826,6 +851,9 @@ def write_results_to_file(job_in,partition_in):
     output_format=options.output_format.lower()
     if output_format=='csv':
         csv_writer = csv.writer(f)
+
+    last_time_stamp=None
+    
     # need to refactor this scection to be more modular and readable
     try:
         reader = results.JSONResultsReader(job_in)
@@ -838,8 +866,15 @@ def write_results_to_file(job_in,partition_in):
                 empty_result=False
                 #logging.debug("Non-Empty result")
                 #logging.debug(result["_time"])
-                time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
-                #logging.debug(time_stamp)
+
+                if options.incremental_mode.lower() =='true' and options.incremental_time_source.lower()=='file':
+                    if last_time_stamp is None:
+                        last_time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
+                    else:
+                        current_time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
+                        last_time_stamp=max(current_time_stamp,last_time_stamp)
+                    # logging.debug("last time: %s",last_time_stamp )
+                
 
                 
                 if output_format=='json':
@@ -876,13 +911,15 @@ def write_results_to_file(job_in,partition_in):
                         f = open_file(output_file_temp)
                         counter_per_file=0
                         
-
+        
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 #print(vars(job_in))
                 logging.debug("Empty result")
                 logging.debug("Diagnostic message: %s",result)
                 i=0
+        #last_time_stamp=datetime.strptime(max(result["_time"]),'%Y-%m-%d %H:%M:%S.%f %Z')
+        #logging.debug("last time max: %s",last_time_stamp )
     except Exception as Argument:
         logging.exception('Write to file error')
     finally:
@@ -898,7 +935,8 @@ def write_results_to_file(job_in,partition_in):
                 os.rename(output_file_temp,output_file)
                 f.close()
         logging.info('write_results-end')
-        return(i)
+        result_summary={'count':i,'last_time_stamp':last_time_stamp}
+        return result_summary
 
         
 def connect():
@@ -929,6 +967,7 @@ def main():
     
     set_logging_level()
     
+ 
     create_catalog()
     previous_run_succeeded=check_previous_run_succeeded()
     print(previous_run_succeeded)
@@ -948,12 +987,17 @@ def main():
     
     # quit()
     if not should_resume:
-        date_array=explode_date_range(options.begin_date,options.end_date,
-                                options.parition_units,int(options.partition_interval))
-        part_count=write_search_partitions(date_array,options_hash)
+        if options.incremental_mode.lower() =='true' and options.incremental_time_source.lower()=='file':
+            # incremental jobs can only have one date partition per index/sourcetype
+            date_array=explode_date_range(options.begin_date,options.end_date,
+                                'days',999)
+        else:
+            date_array=explode_date_range(options.begin_date,options.end_date,
+                                    options.parition_units,int(options.partition_interval))
+        part_count=write_search_partitions(date_array,options_hash,previous_run_succeeded)
         create_output_dir(global_vars["output_directory"])
     
-   
+    # quit()
     # procs = int(options.parallel_processes)   # Number of processes to create
     procs = min(int(options.parallel_processes),part_count)   # Number of processes to create
     logging.info('Number of processes: %s',procs)
