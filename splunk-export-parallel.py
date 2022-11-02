@@ -19,7 +19,7 @@ import hashlib,secrets,csv
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221102_132402"
+__version__ = "20221102_163532"
 
 
 if len(sys.argv) < 2:
@@ -92,6 +92,7 @@ def load_config():
     p.add('--incremental_mode', required=False, help='', default=False)
     p.add('--incremental_time_source', required=False, help='file | search', default="file")
     p.add('--max_file_size_mb', default='0', help='')
+    p.add('--sample_ratio', default='0', help='The integer value used to calculate the sample ratio. The formula is 1 / <integer>.')
     p.add('--keep_n_jobs', default=10, help='Number of previous partition files to keep')
 
     global options
@@ -655,6 +656,9 @@ def search_export(service_in,search_in,partition_in):
                      "count":0,
                      "preview":"false",
                      "id":search_id}
+
+    if int(options.sample_ratio) > 0:
+        kwargs_export["sample_ratio"]=options.sample_ratio
     # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
     set_logging_level('WARN')
 
