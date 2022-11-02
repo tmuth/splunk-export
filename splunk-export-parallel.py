@@ -19,7 +19,7 @@ import hashlib,secrets,csv
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221102_130358"
+__version__ = "20221102_132402"
 
 
 if len(sys.argv) < 2:
@@ -83,7 +83,6 @@ def load_config():
     p.add('--partition_interval', required=True, help='')
     p.add('--directory', required=False, help='Directory to write data files to',default='../')
     p.add('--parallel_processes', required=False, help='',default=1)
-    p.add('--partition_file_name', required=True, help='')
     p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
     p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
     p.add('--output_destination', required=True, help='')
@@ -99,7 +98,7 @@ def load_config():
     options = p.parse_args()
 
     options_hash = checksum_var(p.format_values())
-    print(options)
+    # print(options)
     return options_hash
 
     
@@ -428,8 +427,8 @@ def finalize_job_file(summary_in):
     
     # jobs_file=os.path.abspath(global_vars["jobs_file_path"])
     # partition_file=os.path.abspath(global_vars["partition_file_path"])
-    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
-    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
+    logging.warning('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logging.warning('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
 
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
@@ -501,8 +500,10 @@ def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded
             i+=1
             
             search_partition={'id':i,
-                'earliest': entry[0].isoformat(),'latest':entry[1].isoformat(),'latest_returned':'',
+                'earliest': entry[0].isoformat(),'latest':entry[1].isoformat(),
                              'status':'not started','result_count':'','pid':''}
+            if options.incremental_mode.lower() =='true' and options.incremental_time_source.lower()=='file':
+                search_partition['latest_returned']=''
 
             sourcetype_str=''
             if type(index_st_entry) == tuple: 
@@ -655,10 +656,10 @@ def search_export(service_in,search_in,partition_in):
                      "preview":"false",
                      "id":search_id}
     # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
-    set_logging_level('INFO')
+    set_logging_level('WARN')
 
     job = service_in.jobs.export(search_in, **kwargs_export)
-    
+    set_logging_level()
     logging.info("search_export-end")
 
     return job
@@ -801,6 +802,9 @@ def write_results_to_file(job_in,partition_in):
         elif output_format=='csv':
             output_extension='.csv'
 
+        if options.gzip=='true':
+            output_extension=output_extension+'.gz'
+
         if file_number > 0:
             version_extension='.'+str(file_number)
         output_file_temp_local=file_name_in+version_extension+".tmp"
@@ -816,7 +820,7 @@ def write_results_to_file(job_in,partition_in):
     def open_file(output_file_temp_in):
         if options.gzip=='true':
             f_out = gzip.open(output_file_temp_in, compresslevel=9, mode='wt')
-            output_file=output_file+'.gz'
+            # output_file=output_file+'.gz'
         else:
             f_out = open(output_file_temp_in, "w")
 
@@ -970,7 +974,7 @@ def main():
  
     create_catalog()
     previous_run_succeeded=check_previous_run_succeeded()
-    print(previous_run_succeeded)
+    # print(previous_run_succeeded)
 
     
     should_resume=False
