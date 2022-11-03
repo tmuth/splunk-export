@@ -14,12 +14,13 @@ from time import sleep
 from splunk_hec import splunk_hec
 import configargparse
 import hashlib,secrets,csv
+from tendo import singleton
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221102_163607"
+__version__ = "20221103_102514"
 
 
 if len(sys.argv) < 2:
@@ -969,6 +970,11 @@ def connect():
 def main():
     
     options_hash = load_config()
+    try:
+        current_instance = singleton.SingleInstance()
+    except singleton.SingleInstanceException:
+        raise SystemExit('Error: multiple instances of splunk-export with the same options cannot run simultaneously.')
+
     
     get_globals()
     #pprint(global_vars)
