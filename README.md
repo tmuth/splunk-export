@@ -20,6 +20,7 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 - Parallel export: Increase export performance by using available CPU resources
 - Resume Failed: If something happens in the middle of an export job, you can restart it with the resume parameter. This will skip any partitions that completed, and only run those partitions that did not complete or were never started. 
 - Incremental Export Mode: For each index and sourcetype the latest _time returned is stored in the partition file. On the next run, those latest _time values are retrieved and used as earliest _time for the searches and now() is used for the latest. This allows you to run it via cron and only pull in the events that were written since the last run. 
+- Single Instance Per Options: Only one instance of this utility can run with a given set of options. This prevents multiple copies running via cron if the length of the export overlaps with the time of the next run
 
 ## Performance
 Sample export with an index size of 12 GB containing 30 million events. 
