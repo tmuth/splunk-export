@@ -22,7 +22,7 @@ from smart_open import open as smart_open
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221104_113435"
+__version__ = "20221104_144912"
 
 
 if len(sys.argv) < 2:
@@ -534,6 +534,7 @@ def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded
                   'start_time': datetime.now().isoformat(),
                   'end_time': '',
                   'indexes':index_count,
+                  'sourcetypes':source_type_count,
                   'options_hash':options_hash_in,
                   'job_id':global_vars["job_id"],
                   'controller_pid':os.getpid(),
