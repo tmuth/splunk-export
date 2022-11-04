@@ -15,12 +15,14 @@ from splunk_hec import splunk_hec
 import configargparse
 import hashlib,secrets,csv
 from tendo import singleton
+import boto3
+from smart_open import open as smart_open
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221103_102514"
+__version__ = "20221104_113435"
 
 
 if len(sys.argv) < 2:
@@ -86,15 +88,16 @@ def load_config():
     p.add('--parallel_processes', required=False, help='',default=1)
     p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
     p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
-    p.add('--output_destination', required=True, help='')
+    p.add('--output_destination', required=False, default='file', help='file | hec | s3')
     p.add('--gzip', required=True, help='')
     p.add('--output_format', required=False, help='json | raw | csv',default='json')
-    p.add('--resume_mode', required=False, help='', default=False)
-    p.add('--incremental_mode', required=False, help='', default=False)
+    p.add('--resume_mode', required=False, help='', default='false')
+    p.add('--incremental_mode', required=False, help='', default='false')
     p.add('--incremental_time_source', required=False, help='file | search', default="file")
     p.add('--max_file_size_mb', default='0', help='')
     p.add('--sample_ratio', default='0', help='The integer value used to calculate the sample ratio. The formula is 1 / <integer>.')
     p.add('--keep_n_jobs', default=10, help='Number of previous partition files to keep')
+    p.add('--s3_uri', default='', help='The full path of the bucket to write files to ie s3://export-test-tmuth/test1/test1.txt')
 
     global options
     options = p.parse_args()
@@ -714,9 +717,14 @@ def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
 
     logging.info('dispatch_searches-end')
 
+def split_s3_path(s3_path):
+    path_parts=s3_path.replace("s3://","").split("/")
+    bucket=path_parts.pop(0)
+    key="/".join(path_parts)
+    return bucket, key
 
 def write_results(job_in,partition_in):
-    if options.output_destination=='file':
+    if options.output_destination=='file' or options.output_destination=='s3':
         return write_results_to_file(job_in,partition_in)
 
     if options.output_destination=='hec':
@@ -781,18 +789,27 @@ def write_results_to_file(job_in,partition_in):
     
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
-    file_path=os.path.join(global_vars["output_directory"],partition_in["index"])
-    # file_path=options.directory+'/'+partition_in["index"]
-    create_output_dir(file_path)
+    
 
-   # if partition_in["sourcetype"]:
-    if "sourcetype" in partition_in:
-        # file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
-        file_path=os.path.join(global_vars["output_directory"],partition_in["index"],partition_in["sourcetype"])
+    if options.output_destination.lower()=='file':
+        file_path=os.path.join(global_vars["output_directory"],partition_in["index"])
         create_output_dir(file_path)
-        file_name=os.path.join(file_path,partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest)
+
+        if "sourcetype" in partition_in:
+            # file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+            file_path=os.path.join(global_vars["output_directory"],partition_in["index"],partition_in["sourcetype"])
+            create_output_dir(file_path)
+            file_name=os.path.join(file_path,partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest)
+        else:
+            file_name=os.path.join(file_path,partition_in["index"]+"_"+earliest)
     else:
-        file_name=os.path.join(file_path,partition_in["index"]+"_"+earliest)
+        if "sourcetype" in partition_in:
+            # file_path=options.directory+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+            file_path=options.s3_uri+'/'+options.job_name+'/'+partition_in["index"]+'/'+partition_in["sourcetype"]
+            file_name=file_path+'/'+partition_in["index"]+"_"+partition_in["sourcetype"]+"_"+earliest
+        else:
+            file_path=options.s3_uri+'/'+options.job_name+'/'+partition_in["index"]
+            file_name=file_path+'/'+partition_in["index"]+"_"+earliest
 
     empty_result=True
     file_number=0
@@ -812,10 +829,20 @@ def write_results_to_file(job_in,partition_in):
 
         if file_number > 0:
             version_extension='.'+str(file_number)
-        output_file_temp_local=file_name_in+version_extension+".tmp"
-        output_file_temp_local=os.path.normpath(output_file_temp_local)
-        output_file_local=file_name_in+version_extension+output_extension
-        output_file_local=os.path.normpath(output_file_local)
+
+        if options.output_destination=='file':
+            output_file_temp_local=file_name_in+version_extension+".tmp"
+            output_file_temp_local=os.path.normpath(output_file_temp_local)
+            output_file_local=file_name_in+version_extension+output_extension
+            output_file_local=os.path.normpath(output_file_local)
+        else:
+            #s3
+            tmp_extension='.tmp'
+            if options.gzip=='true':
+                tmp_extension='.tmp.gz'
+            output_file_temp_local=file_name_in+version_extension+tmp_extension
+            output_file_local=file_name_in+version_extension+output_extension
+
 
         return output_file_temp_local,output_file_local
 
@@ -823,12 +850,14 @@ def write_results_to_file(job_in,partition_in):
     logging.debug('output_file_temp: %s',output_file_temp)
 
     def open_file(output_file_temp_in):
-        if options.gzip=='true':
+        if options.gzip=='true' and options.output_destination=='file':
             f_out = gzip.open(output_file_temp_in, compresslevel=9, mode='wt')
             # output_file=output_file+'.gz'
+        elif options.output_destination=='s3':
+            set_logging_level('WARN')
+            f_out = smart_open(output_file_temp_in, 'w')
         else:
             f_out = open(output_file_temp_in, "w")
-
         return f_out
 
     def check_file_size(file_handle_in,check_size_loops_in):
@@ -913,7 +942,19 @@ def write_results_to_file(job_in,partition_in):
                             dummy,output_file=get_new_file_name(file_name)
                         
                         logging.debug("Result count for:%s is %s",output_file,i)
-                        os.rename(output_file_temp,output_file)
+                        if options.output_destination.lower()=='file':
+                            os.rename(output_file_temp,output_file)
+                        else:
+                            bucket, tmp_key = split_s3_path(output_file_temp)
+                            bucket, final_key = split_s3_path(output_file)
+                            logging.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
+                            s3 = boto3.resource('s3')
+                            copy_source = {
+                                'Bucket': bucket,
+                                'Key': tmp_key
+                            }
+                            s3.meta.client.copy(copy_source, bucket, final_key)
+                            s3.Object(bucket, tmp_key).delete()
                         file_number+=1
                         output_file_temp,output_file=get_new_file_name(file_name)
                         logging.debug("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
@@ -932,17 +973,45 @@ def write_results_to_file(job_in,partition_in):
     except Exception as Argument:
         logging.exception('Write to file error')
     finally:
+        set_logging_level(options.log_level)
         logging.debug("Result count: %s",i)
-        if empty_result:
-            f.close()
-            os.remove(output_file_temp)
-        else:
-            if f.tell() == 0:
+
+        if options.output_destination.lower()=='file':
+            if empty_result:
                 f.close()
                 os.remove(output_file_temp)
             else:
-                os.rename(output_file_temp,output_file)
+                if f.tell() == 0:
+                    f.close()
+                    os.remove(output_file_temp)
+                else:
+                    os.rename(output_file_temp,output_file)
+                    f.close()
+        else:
+            s3 = boto3.resource('s3')
+            bucket, tmp_key = split_s3_path(output_file_temp)
+            bucket, final_key = split_s3_path(output_file)
+            logging.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
+            if empty_result:
                 f.close()
+                s3.Object(bucket, tmp_key).delete()
+            else:
+                if f.tell() == 0:
+                    f.close()
+                    s3.Object(bucket, tmp_key).delete()
+                else:
+                    f.close()
+                    copy_source = {
+                        'Bucket': bucket,
+                        'Key': tmp_key
+                    }
+                    s3.meta.client.copy(copy_source, bucket, final_key)
+                    s3.Object(bucket, tmp_key).delete()
+                    
+
+
+
+        
         logging.info('write_results-end')
         result_summary={'count':i,'last_time_stamp':last_time_stamp}
         return result_summary
