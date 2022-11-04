@@ -6,7 +6,7 @@ The dimensions of export parallelism are index, sourcetype and time. The first s
 ## Export Targets
 - Mounted file system
 - HTTP Event Collector (HEC)
-- S3 (coming soon)
+- AWS S3 
 
 ## Export Formats
 - JSON
