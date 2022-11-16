@@ -1088,6 +1088,13 @@ def main():
     
     lock = multiprocessing.Lock()
     jobs = []
+
+
+    from tqdm.auto import tqdm
+    from p_tqdm import p_map, p_umap, p_imap, p_uimap
+
+    numbers = list(range(0, 8))
+
     for i in range(0, procs):
         process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,options,lock,global_vars)))
         jobs.append(process)
