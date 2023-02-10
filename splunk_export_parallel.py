@@ -76,7 +76,7 @@ def load_config():
     #indexes', required=True, help='')
     p.add('--indexes', required=True, help='')
     #sourcetypes', required=True, help='')
-    p.add('--sourcetypes', required=True, help='')
+    p.add('--sourcetypes', required=False, help='')
     p.add('--begin_date', required=True, help='')
     p.add('--end_date', required=True, help='')
     p.add('--extra', required=False, help='')
@@ -163,20 +163,20 @@ def create_catalog():
     create_output_dir(global_vars["job_path"])
 
 def build_search_string(partition_in):
-    logging.info('build_search_string-start')
+    logging.debug('build_search_string-start')
     logging.debug('indexes: %s',options.indexes)
     logging.debug('extra: %s',options.extra)
     s='search index='+partition_in["index"]
     if options.sourcetypes:
         s+=' sourcetype='+partition_in["sourcetype"]
-    s+=' '+options.extra
+    s+=' '+str(options.extra)
     
     logging.debug('s: %s',s)
-    logging.info('build_search_string-end')
+    logging.debug('build_search_string-end')
     return s
 
 def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str,interval_in: int):
-    logging.info('explode_date_range-start')
+    logging.debug('explode_date_range-start')
     logging.debug('begin_date_in: %s',begin_date_in)
     logging.debug('end_date_in: %s',end_date_in)
     begin_date = dateutil.parser.parse(begin_date_in)
@@ -201,11 +201,11 @@ def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str
         
         begin_current=end_current
         logging.debug('begin_current: %s',begin_current)
-    logging.info('explode_date_range-end')
+    logging.debug('explode_date_range-end')
     return result
 
 def search_splunk_for_sourtypes(index_list_in,date_array_in):
-    logging.info('search_splunk_for_sourtypes-start')
+    logging.debug('search_splunk_for_sourtypes-start')
     result_list=[]
     for index in index_list_in:
         service=connect()
@@ -404,11 +404,11 @@ def format_jobs_json(json_in):
     return json_doc
 
 def cleanup_old_jobs(job_list_in):
-    logging.info('Deleting %s old jobs',len(job_list_in))
+    logging.debug('Deleting %s old jobs',len(job_list_in))
     for job in job_list_in:
         # print(job["job_id"])
         partition_file=os.path.join(global_vars["job_path"],job["partition_file"])
-        logging.info('Partition file: %s',partition_file)
+        logging.debug('Partition file: %s',partition_file)
         if os.path.exists(partition_file):
             logging.debug(partition_file)
             os.remove(partition_file)
@@ -442,8 +442,8 @@ def finalize_job_file(summary_in):
     
     # jobs_file=os.path.abspath(global_vars["jobs_file_path"])
     # partition_file=os.path.abspath(global_vars["partition_file_path"])
-    logging.warning('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
-    logging.warning('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
+    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
 
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
@@ -505,7 +505,7 @@ def get_previous_run_latest_dates(new_partitions_in):
 
 
 def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded_in):
-    logging.info('write_search_partitions-start')
+    logging.debug('write_search_partitions-start')
     index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array(date_array_in)
     json_data = {}
     result_list = []
@@ -537,6 +537,8 @@ def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded
         # pprint(updated_partitions)
         result_list=updated_partitions
 
+    logging.info("Total Partitions: %s",i)
+    global_vars["partition_count"]=i
 
     summary_data={'partition_count': i,
                   'complete_count': 0,
@@ -567,7 +569,7 @@ def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded
     
     logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
     logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
-    logging.info('write_search_partitions-end')
+    logging.debug('write_search_partitions-end')
     return int(summary_data["partition_count"])
 
 def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in,last_date_in):
@@ -591,6 +593,8 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
                 
         if status_in == 'complete':
             data["summary_data"]["complete_count"]=int(data["summary_data"]["complete_count"])+1
+            pct_complete=round((data["summary_data"]["complete_count"]/global_vars["partition_count"])*100)
+            logging.info("Completed Partition %s of %s - %%%s Complete",data["summary_data"]["complete_count"],global_vars["partition_count"],pct_complete)
             data["summary_data"]["total_results"]=int(data["summary_data"]["total_results"])+int(result_count_in)
             
             
@@ -599,7 +603,7 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
         f.write(json_object)
         f.truncate()
     lock_in.release()
-    logging.info('update_partition_status-end')
+    logging.debug('update_partition_status-end')
 
 def finalize_partition_status(partition_file_in,lock_in):
     lock_in.acquire()
@@ -654,7 +658,7 @@ def get_search_partition(partition_file_in,lock_in):
 
 
 def search_export(service_in,search_in,partition_in):
-    logging.info('search_export-start')
+    logging.debug('search_export-start')
 
     logging.debug(service_in)
     logging.debug(search_in)
@@ -679,12 +683,12 @@ def search_export(service_in,search_in,partition_in):
 
     job = service_in.jobs.export(search_in, **kwargs_export)
     set_logging_level()
-    logging.info("search_export-end")
+    logging.debug("search_export-end")
 
     return job
 
 def search(service_in,search_in,earliest_in,latest_in):
-    logging.info('search-start')
+    logging.debug('search-start')
 
     logging.debug(service_in)
     logging.debug(search_in)
@@ -698,7 +702,7 @@ def search(service_in,search_in,earliest_in,latest_in):
     job = service_in.jobs.export(search_in, **kwargs_export)
     
     
-    logging.info("search-end")
+    logging.debug("search-end")
 
     return job
 
@@ -726,7 +730,7 @@ def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
         else:
             break
 
-    logging.info('dispatch_searches-end')
+    logging.debug('dispatch_searches-end')
 
 def split_s3_path(s3_path):
     path_parts=s3_path.replace("s3://","").split("/")
@@ -796,7 +800,7 @@ def send_results_to_hec(job_in,partition_in):
 
 
 def write_results_to_file(job_in,partition_in):
-    logging.info('write_results-start')
+    logging.debug('write_results-start')
     
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
@@ -1023,14 +1027,14 @@ def write_results_to_file(job_in,partition_in):
 
 
         
-        logging.info('write_results-end')
+        logging.debug('write_results-end')
         result_summary={'count':i,'last_time_stamp':last_time_stamp}
         return result_summary
 
         
 def connect():
     try:
-        logging.info('connect-start')
+        logging.debug('connect-start')
         logging.debug('SPLUNK_HOST: %s',options.SPLUNK_HOST)
         logging.debug('SPLUNK_PORT: %s',options.SPLUNK_PORT)
         logging.debug('SPLUNK_AUTH_TOKEN: %s',options.SPLUNK_AUTH_TOKEN)
@@ -1041,8 +1045,8 @@ def connect():
             splunkToken=options.SPLUNK_AUTH_TOKEN,
             autologin=True)
         logging.debug(service)
-        logging.info('connect-successful')
-        logging.info('connect-end')
+        logging.debug('connect-successful')
+        logging.debug('connect-end')
         return service
     except:
         logging.error('connect-failed')
