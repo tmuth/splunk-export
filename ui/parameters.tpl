@@ -1,4 +1,4 @@
-% include('header.tpl', title='Parameters X')
+% include('ui/header.tpl', title='Parameters')
 <h1>Splunk Export Parameter Generator</h1>
 <form action="/parametergen" method="post" id="parameterform">
 
@@ -319,4 +319,4 @@
 
 
 
-% include('footer.tpl')
+% include('ui/footer.tpl')

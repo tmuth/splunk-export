@@ -1,4 +1,4 @@
-% include('header.tpl', title='Config File')
+% include('ui/header.tpl', title='Config File')
 
 <div style="font-family: monospace;">
 
@@ -19,4 +19,4 @@
   #  name='foo'.upper()
 %>
 %#{{name}}
-% include('footer.tpl')
+% include('ui/footer.tpl')

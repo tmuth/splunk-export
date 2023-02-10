@@ -3,6 +3,8 @@ import os, re
 import splunklib.client as client
 import splunklib.results as results
 
+ui_subdir='ui'
+
 app = Bottle()
 
 def merge_dicts(*args):
@@ -13,9 +15,9 @@ def merge_dicts(*args):
 
 my_module = os.path.abspath(__file__)
 parent_dir = os.path.dirname(my_module)
-jquery_ui_dir = os.path.join(parent_dir, 'jquery-ui-1.13.2.custom')
+jquery_ui_dir = os.path.join(parent_dir, ui_subdir,'jquery-ui-1.13.2.custom')
 # print(static_dir)
-static_dir = os.path.join(parent_dir, 'static')
+static_dir = os.path.join(parent_dir, ui_subdir,'static')
 
 @app.route('/jquery-ui-1.13.2.custom/<filepath:path>')
 def server_jqui(filepath):
@@ -36,36 +38,14 @@ def login():
         </form>
     '''
 
-# @app.post('/login') # or @route('/login', method='POST')
-@app.route('/login', method='POST')
-def do_login():
-    username = request.forms.get('username')
-    password = request.forms.get('password')
-    # if check_login(username, password):
-    if 1==1:
-        return "<p>"+username+", your login information was correct.</p>"
-    else:
-        return "<p>Login failed.</p>"
+
 
 @app.route('/', method='GET')
 def show_parameters():
     response.set_header("Cache-Control", "public, max-age=86400")
     stored_cookie_payload=request.cookies.get('payload')
-    return template('parameters',cookie_payload=stored_cookie_payload)
-    #     return '''
-#     Splunk Export Parameter Generator
-#         <form action="/parametergen" method="post">
-#             <select name="generate-format">
-#     <option>command-line</option>
-#     <option>config file</option>
-#   </select><br />
-#   SPLUNK_HOST: <input name="SPLUNK_HOST" type="text" />
-#   SPLUNK_PORT: <input name="SPLUNK_PORT" type="text" />
-#   SPLUNK_AUTH_TOKEN: <input name="SPLUNK_AUTH_TOKEN" type="text" />
-#   <br />
-#             <input value="Generate" type="submit" />
-#         </form>
-#     '''
+    return template(ui_subdir+'/parameters',cookie_payload=stored_cookie_payload)
+
 @app.route('/display_table', method='POST')
 def generate_patameters():
     # return "Generated"
@@ -76,19 +56,19 @@ def generate_patameters():
     # for k, v in payload.items():
         # print(k, v)
     # print(payload)
-    return template('disp_table', rows=payload)
+    return template(ui_subdir+'/disp_table', rows=payload)
 
 @app.route('/config-file', method='POST')
 def config_file_parameters():
     payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
     response.set_cookie('payload', str(payload))
-    return template('config-file', rows=payload)
+    return template(ui_subdir+'/config-file', rows=payload)
     
 @app.route('/command-line', method='POST')
 def command_line_parameters():
     payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
     response.set_cookie('payload', str(payload))
-    return template('command-line', rows=payload)
+    return template(ui_subdir+'/command-line', rows=payload)
 
 @app.route('/splunk-connect', method='POST')
 def splunk_connect():
@@ -155,7 +135,7 @@ def splunk_connect():
         status="Connection Test Failed"
         pass
     
-    return template('server_info', rows=rows,payload=payload,status=status)
+    return template(ui_subdir+'/server_info', rows=rows,payload=payload,status=status)
 
     # return output
 

@@ -1,4 +1,4 @@
-% include('header.tpl', title='Parameters Output')
+% include('ui/header.tpl', title='Parameters Output')
 <p>{{status}}</p>
 SPLUNK_HOST: {{payload['SPLUNK_HOST']}}<br />
 SPLUNK_PORT: {{payload['SPLUNK_PORT']}}<br />
@@ -20,4 +20,4 @@ Number of Virtual Cores: {{rows.numberOfVirtualCores}} <br />
 </table>
 </div>
 %end
-% include('footer.tpl')
+% include('ui/footer.tpl')

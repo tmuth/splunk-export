@@ -1,4 +1,4 @@
-% include('header.tpl', title='Config File')
+% include('ui/header.tpl', title='Config File')
 
 <br />
 <div style="font-family: monospace, monospace;">
@@ -13,4 +13,4 @@ python3 splunk_export_parallel.py
 %end
 </div>
 
-% include('footer.tpl')
+% include('ui/footer.tpl')

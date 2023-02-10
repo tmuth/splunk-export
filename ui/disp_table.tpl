@@ -1,4 +1,4 @@
-% include('header.tpl', title='Parameters Output')
+% include('ui/header.tpl', title='Parameters Output')
 <p>The items are as follows:</p>
 <table border="1">
 %for k,v in rows.items():
@@ -7,4 +7,4 @@
   </tr>
 %end
 </table>
-% include('footer.tpl')
+% include('ui/footer.tpl')
