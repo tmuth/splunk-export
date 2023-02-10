@@ -25,9 +25,9 @@ __license__ = "MIT"
 __version__ = "20221104_144933"
 
 
-if len(sys.argv) < 2:
-    print("Pass the name of a config file as argument 1")
-    exit(1)
+# if len(sys.argv) < 2:
+#     print("Pass the name of a config file as argument 1")
+#     exit(1)
 
 #if not os.path.exists(sys.argv[1]):
 #    print("Cannot find the configuration file: "+sys.argv[1])
@@ -60,17 +60,17 @@ def set_logging_level(log_level_in=None):
 
 def load_config():
     p = configargparse.ArgParser()
-    p.add('-c', '--my-config', required=True, is_config_file=True, help='config file path')
+    p.add('-c', '--my-config', required=False, is_config_file=True, help='config file path')
     p.add('--SPLUNK_HOST', required=True, help='')
     p.add('--SPLUNK_PORT', required=True, help='')
-    p.add('--SPLUNK_AUTH_TOKEN', required=True, help='',env_var='SPLUNK_LAPTOP_TOKEN')
+    p.add('--SPLUNK_AUTH_TOKEN', required=True, help='Pass it in directly or set an environment variable and pass in the name of the environment variable enclosed %. For example %DEV_TOKEN%',env_var='SPLUNK_AUTH_TOKEN')
 
 
-    p.add('--HEC_HOST', required=True, help='')
-    p.add('--HEC_PORT', required=True, help='')
-    p.add('--HEC_TOKEN', required=True, help='')
-    p.add('--HEC_TLS', required=True, help='')
-    p.add('--HEC_TLS_VERIFY', required=True, help='')
+    p.add('--HEC_HOST', required=False, help='')
+    p.add('--HEC_PORT', required=False, help='')
+    p.add('--HEC_TOKEN', required=False, help='')
+    p.add('--HEC_TLS', required=False, help='')
+    p.add('--HEC_TLS_VERIFY', required=False, help='')
 
 
     #indexes', required=True, help='')
@@ -79,7 +79,7 @@ def load_config():
     p.add('--sourcetypes', required=True, help='')
     p.add('--begin_date', required=True, help='')
     p.add('--end_date', required=True, help='')
-    p.add('--extra', required=True, help='')
+    p.add('--extra', required=False, help='')
 
     p.add('--log_level', required=True, help='')
     p.add('--parition_units', required=True, help='')
@@ -89,7 +89,7 @@ def load_config():
     p.add('--job_location', required=False, help='Path to store the catalog for this job', default='../')
     p.add('--job_name', required=True, help='Name for this job which will be a sub-directory of job_location')
     p.add('--output_destination', required=False, default='file', help='file | hec | s3')
-    p.add('--gzip', required=True, help='')
+    p.add('--gzip', required=False, help='')
     p.add('--output_format', required=False, help='json | raw | csv',default='json')
     p.add('--resume_mode', required=False, help='', default='false')
     p.add('--incremental_mode', required=False, help='', default='false')
@@ -102,8 +102,18 @@ def load_config():
     global options
     options = p.parse_args()
 
+    token_match=re.search("%.+%",options.SPLUNK_AUTH_TOKEN)
+    if token_match:
+        # print(options.SPLUNK_AUTH_TOKEN)
+        env_var=re.sub(r"%(.+)%","\\1",options.SPLUNK_AUTH_TOKEN)
+        # print(env_var)
+        env_var_val=os.environ.get(env_var)
+        # print(env_var_val)
+        options.SPLUNK_AUTH_TOKEN=env_var_val
+
     options_hash = checksum_var(p.format_values())
     # print(options)
+    # print(p.format_help())
     return options_hash
 
     
@@ -1090,14 +1100,16 @@ def main():
     jobs = []
 
 
-    from tqdm.auto import tqdm
-    from p_tqdm import p_map, p_umap, p_imap, p_uimap
+    # from tqdm.auto import tqdm
+    # from p_tqdm import p_map, p_umap, p_imap, p_uimap
 
-    numbers = list(range(0, 8))
+    # numbers = list(range(0, 8))
 
     for i in range(0, procs):
         process = multiprocessing.Process(target=dispatch_searches,args=((partition_file,options,lock,global_vars)))
         jobs.append(process)
+
+    # jobs = p_map(dispatch_searches,args=((partition_file,options,lock,global_vars)))
 
     for j in jobs:
         j.start()
@@ -1110,5 +1122,8 @@ def main():
 
 #global_vars={}
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Pass the name of a config file as argument 1")
+        exit(1)
     main()
 
