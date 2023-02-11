@@ -15,13 +15,13 @@ def merge_dicts(*args):
 
 my_module = os.path.abspath(__file__)
 parent_dir = os.path.dirname(my_module)
-jquery_ui_dir = os.path.join(parent_dir, ui_subdir,'jquery-ui-1.13.2.custom')
+jquery_ui_dir = os.path.join(parent_dir, ui_subdir,'static','jquery-ui-1.13.2.custom')
 # print(static_dir)
 static_dir = os.path.join(parent_dir, ui_subdir,'static')
 
-@app.route('/jquery-ui-1.13.2.custom/<filepath:path>')
-def server_jqui(filepath):
-    return static_file(filepath, root=jquery_ui_dir)
+# @app.route('/jquery-ui-1.13.2.custom/<filepath:path>')
+# def server_jqui(filepath):
+#     return static_file(filepath, root=jquery_ui_dir)
 
 @app.route('/static/<filepath:path>')
 def server_static(filepath):

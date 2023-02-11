@@ -34,9 +34,9 @@
     <fieldset>
         <legend data-title="JOB">Job</legend>
         <!-- <div class="controlgroup"></div> -->
-        <label>Job Name:</label> <input name="job_name" type="text" class="inputTextMedium"
+        <label for="jobName">Job Name:</label> <input id="jobName" name="job_name" type="text" class="inputTextMedium" minlength="2" required
             title="A directory with this name will be created to contain the catalog metadata files, not the actual export data files." />
-        <label>Job Location:</label> <input name="job_location" type="text" value="../" class="inputTextLong"
+        <label for="jobLocation" >Job Location:</label> <input name="job_location" id="jobLocation" type="text" value="../" class="inputTextLong"
             title="Path to store the catalog for this job" />
 
         <!-- </div> -->
@@ -45,10 +45,10 @@
     <fieldset>
         <legend data-title="SPLUNK">Splunk</legend>
         <!-- <div class="controlgroup"></div> -->
-        <label>SPLUNK_HOST:</label> <input name="SPLUNK_HOST" type="text" class="inputTextMedium"
-            title="The hostname that contains the source data" />
-        <label>SPLUNK_PORT:</label> <input name="SPLUNK_PORT" type="text" class="inputNumber" value="8000" />
-        <div><label>SPLUNK_AUTH_TOKEN:</label> <input name="SPLUNK_AUTH_TOKEN" type="text" class="inputTextLong"
+        <label for="splunkHost">SPLUNK_HOST:</label> <input id="splunkHost" name="SPLUNK_HOST" type="text" class="inputTextMedium"
+            title="The hostname that contains the source data" minlength="2" required />
+        <label for="splunkPort">SPLUNK_PORT:</label> <input name="SPLUNK_PORT" id="splunkPort" type="text" class="inputNumber" value="8000" minlength="2" required />
+        <div><label for="splunkAuthToken" >SPLUNK_AUTH_TOKEN:</label> <input name="SPLUNK_AUTH_TOKEN" id="splunkAuthToken" type="text" class="inputTextLong" minlength="2" required 
                 title="Authentication token to use in place of a username/password combination. This is not the same as a HEC token. Pass it in directly or set an environment variable and pass in the name of the environment variable enclosed %. For example %DEV_TOKEN%" />
             <a class="ui-button ui-widget ui-corner-all" href="#" id="splunkTestButton">Test Splunk Connection</a>
         </div>
@@ -105,14 +105,14 @@
     <fieldset>
         <legend data-title="SEARCH">Search</legend>
         <!-- <div class="controlgroup"> -->
-            <label>INDEXES:</label> <input name="indexes" type="text" class="inputTextMedium"
+            <label for="indexesInput">INDEXES:</label> <input name="indexes" id="indexesInput" type="text" class="inputTextMedium" minlength="2" required 
                 title="A comma separated list of indexes to export. This cannot be null or *" />
-            <label>SOURCETYPES:</label> <input name="sourcetypes" type="text" class="inputTextMedium" value="*"
+            <label for="sourcesInput">SOURCETYPES:</label> <input name="sourcetypes" id="sourcesInput" type="text" class="inputTextMedium" value="*"
                 title="A comma separated list of sourcetypes to export. " />
             <br />
-            <label>BEGIN_DATE:</label> <input name="begin_date" type="text" />
-            <label>END_DATE:</label> <input name="end_date" type="text" /> <br />
-            <label>EXTRA:</label> <input name="extra" type="text" class="inputTextLong" value="| table *"
+            <label for="beginDate">BEGIN_DATE:</label> <input name="begin_date" id="beginDate" type="text" minlength="2" required />
+            <label for="endDate" >END_DATE:</label> <input name="end_date" id="endDate" type="text" minlength="2" required /> <br />
+            <label for="extraSearch">EXTRA:</label> <input name="extra" id="extraSearch" type="text" class="inputTextLong" value="| table *"
                 title="Post-search formatting commands in SPL format. The utility will construct the filter part of the search using the indexes, sourcetypes, date range and partition intervals. The 'EXTRA' attribute is then appended to each of these searches. For example '| head 100 | table *' ' " />
             <br />
             <label>Sample Ratio:</label> <input name="sample_ratio" type="text" class="inputNumber" value="0"
@@ -122,24 +122,24 @@
     <fieldset id="exportFieldset">
         <legend data-title="EXPORT">Export</legend>
         <!-- <div class="controlgroup"> -->
-        <label>Parallel Processes:</label> <input name="parallel_processes" type="text" class="inputNumber" value="1"
+        <label for="parallelProcesses">Parallel Processes:</label> <input name="parallel_processes" id="parallelProcesses" type="text" class="inputNumber" value="1" minlength="1" required 
             title="The number of concurrent processes to run for this export. This should be less than the number of CPU cores on the Search Head and not more than the number of partitions. Note that the export has to be partitioned to execute using more than one worker. For instance, if you are only exporting 1 index/sourcetype for 1 day, perhaps partition by '1 hours' is a good start." /> <br />
         
-        <label>Partition Units:</label><select name="parition_units">
+        <label for="paritionUnits">Partition Units:</label><select name="parition_units" id="paritionUnits">
             <option value="days" selected>days</option>
             <option value="hours">hours</option>
         </select>
-        <label>Partition Interval:</label> <input name="partition_interval" type="text" class="inputNumber" value="1"
+        <label for="paritionInterval">Partition Interval:</label> <input name="partition_interval" id="paritionInterval" type="text" class="inputNumber" value="1" minlength="1" required 
             title="Combines with Partition Units to determine how to divide the export by time." /> <br />
-        <label>Resume Mode:</label><select name="resume_mode" title="If the previous run failed, start where it left off.">
+        <label for="resumeMode">Resume Mode:</label><select name="resume_mode" id="resumeMode" title="If the previous run failed, start where it left off.">
             <option>resume</option>
             <option selected>overwrite</option>
         </select><br />
-        <label>Incremental Mode:</label><select name="incremental_mode" title="Incremental mode keeps track of the last exported date by index and sourcetype of the previous run, then uses that date as the earliest date in the searches for the current run">
+        <label for="incrementalMode" >Incremental Mode:</label><select name="incremental_mode" id="incrementalMode" title="Incremental mode keeps track of the last exported date by index and sourcetype of the previous run, then uses that date as the earliest date in the searches for the current run">
             <option>True</option>
             <option selected>False</option>
         </select>
-        <label>Incremental Time Source:</label><select name="incremental_time_source" title="Determines if the last export dates are tracked by files in the catalog or by running searches against the destination">
+        <label for="incrementalTimeSource" >Incremental Time Source:</label><select name="incremental_time_source" id="incrementalTimeSource" title="Determines if the last export dates are tracked by files in the catalog or by running searches against the destination">
             <option selected>search</option>
             <option>file</option>
         </select>
@@ -314,7 +314,27 @@
                 $("#dialog-message").dialog({ modal: true }).dialog('open');
             }
         });
-    }   
+    } 
+
+    $(function() {
+  // Initialize form validation on the registration form.
+  // It has the name attribute "registration"
+        $("#parameterform").validate();
+    
+    });
+
+    $('#parameterform').find(':input').filter('[required]').each(function(){
+        $this = $(this);
+        $label = $('label[for="'+ $this.attr('id') +'"]');
+
+        if ($label.length > 0 ) {
+            //this input has a label associated with it, lets do something!
+            //$label.css({"color":"red"});
+            var str ='<span>*</span>';
+            $label.append(str);
+            $label.find('span').css({"color":"red"});
+        }
+    });
 </script>
 
 
