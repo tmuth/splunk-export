@@ -1,6 +1,6 @@
 % include('ui/header.tpl', title='Parameters')
 <h1>Splunk Export Parameter Generator</h1>
-<h2>Version: 123</h2>
+<h2>Version:  "20230211_210208"</h2>
 <form action="/parametergen" method="post" id="parameterform">
 
     <fieldset>
@@ -10,7 +10,6 @@
             <option disabled selected value> -- select an option -- </option>
             <option>command-line</option>
             <option>config-file</option>
-            <option>run-interactively</option>
             <option>display_table</option>
         </select>
 

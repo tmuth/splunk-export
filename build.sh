@@ -14,10 +14,14 @@ replace_version() {
 
 search="^\(__version__ =\).*"
 replace="\1 \"${version}\""
-
 replace_version "${search}" "${replace}"  "splunk-export-parallel.py"
 
+search="^\(<h2>Version: \)[_0-9]*"
+replace="\1 \"${version}\""
+replace_version "${search}" "${replace}" "ui/parameters.tpl"
+
 git commit splunk-export-parallel.py -m "$1"
+git commit ui/parameters.tpl -m "$1"
 git push origin main 
 git tag ${version}
 git push origin -f --tags

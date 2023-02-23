@@ -1,7 +1,23 @@
+
+from gevent import monkey; monkey.patch_all()
+from gevent import sleep
+from gevent import signal as gsignal
+import gevent
+from gevent.subprocess import Popen, PIPE
+
+
 from bottle import get, post, request,run,route,Bottle,template, static_file,response # or route
-import os, re
+import os, re, subprocess,sys,signal
 import splunklib.client as client
 import splunklib.results as results
+import urllib.parse
+
+
+
+from bottle import get, post, request, response
+from bottle import GeventServer, run
+import time, gc
+from pprint import pprint
 
 ui_subdir='ui'
 
@@ -139,6 +155,99 @@ def splunk_connect():
 
     # return output
 
+
+@app.route('/run-interactively', method='POST')
+def run_interactively():
+    payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
+    return template(ui_subdir+'/run-interactively', rows=payload)
     
+
+@app.route('/run-script', methods=['GET', 'POST'])
+def run_script():
     
-app.run(host='localhost', port=8080, debug=False,reloader=True)
+    # payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
+    # return template(ui_subdir+'/run-interactively', rows=payload)
+    print('yep')
+    output =  '''
+        % import subprocess
+        % output=subprocess.run(["ls", "-l", "/dev/null"], capture_output=True)
+        {{output}}
+    '''
+    return template(output)
+
+
+
+@app.route('/stream1',methods=['GET', 'POST'])
+def stream():
+    yield 'START'
+    sleep(3)
+    yield 'MIDDLE'
+    sleep(5)
+    yield 'END'
+
+
+global sub
+@app.route('/stream',methods=['GET', 'POST'])
+def stream():
+    # "Using server-sent events"
+    # https://developer.mozilla.org/en-US/docs/Server-sent_events/Using_server-sent_events
+    # "Stream updates with server-sent events"
+    # http://www.html5rocks.com/en/tutorials/eventsource/basics/
+
+    payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
+    print(urllib.parse.unquote(payload["parameters"]))
+
+    response.content_type  = 'text/event-stream'
+    response.cache_control = 'no-cache'
+
+    # Set client-side auto-reconnect timeout, ms.
+
+    yield 'retry: 1000000\n\n'
+    # try:
+        # with subprocess.Popen(['/usr/bin/srun'] + argv[1:]) as cmd:
+            # cmd.wait()
+    
+    # python3 splunk_export_parallel.py 
+    exec_string="python3 splunk_export_parallel.py "+urllib.parse.unquote(payload["parameters"])
+    sub = Popen(exec_string, stdout=PIPE, stderr=subprocess.STDOUT, shell=True, preexec_fn=os.setsid)
+    # sub = Popen('sleep 1; ping www.google.com -c 2; sleep 5; uname', stdout=PIPE, shell=True, preexec_fn=os.setsid)
+    # global_process=sub
+    while True:
+        s = sub.stdout.readline()
+        # gevent.sleep(1)
+        # if s == "":
+        # if s is  None:
+        pprint(s)
+        if len(s)==0:
+            print("CLOSE")
+            yield ''
+            break
+        else:
+            # print(s.strip())
+            n = s.strip()
+            print(n.decode())
+            yield 'data: %s\n\n' % n.decode()
+
+    # print("CLOSE")
+    # yield 'CLOSE:'
+ 
+
+def shutdown(data, context):
+    print('Shutting down ...')
+    # server.stop(timeout=60)
+    exit(signal.SIGTERM)
+gsignal.signal(signal.SIGTERM, shutdown)
+gsignal.signal(signal.SIGINT, shutdown) #CTRL C
+
+
+
+
+
+# app.run(host='localhost', port=8080, debug=True,reloader=True)
+try:
+    app.run(host='localhost', server=GeventServer, port=8080, debug=True,reloader=True)
+except KeyboardInterrupt:
+    gsignal.signal(signal.SIGTERM, shutdown)
+    gsignal.signal(signal.SIGINT, shutdown) #CTRL C
+# if __name__ == '__main__':
+    # run(server=GeventServer, port = 8081)
