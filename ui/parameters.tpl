@@ -1,6 +1,6 @@
 % include('ui/header.tpl', title='Parameters')
 <h1>Splunk Export Parameter Generator</h1>
-<h2>Version:  "20230228_213148" "20230228_213047" "20230228_213006"</h2>
+<h2>Version:  20230228_215453</h2>
 <form action="/parametergen" method="post" id="parameterform">
 
     <fieldset>
