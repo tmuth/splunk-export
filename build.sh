@@ -16,8 +16,8 @@ search="^\(__version__ =\).*"
 replace="\1 \"${version}\""
 replace_version "${search}" "${replace}"  "splunk_export_parallel.py"
 
-search="^\(<h2>Version: \)[_0-9]*"
-replace="\1 \"${version}\""
+search="^\(<h2>Version: \)\([[:digit:]_ ]\{1,\}\).*\(<\/h2>\)"
+replace="\1 ${version}\3"
 replace_version "${search}" "${replace}" "ui/parameters.tpl"
 
 git commit splunk_export_parallel.py -m "$1"
