@@ -22,7 +22,7 @@ from smart_open import open as smart_open
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20230228_213148"
+__version__ = "20230228_215453"
 
 
 # if len(sys.argv) < 2:
