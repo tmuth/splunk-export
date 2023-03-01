@@ -22,7 +22,7 @@ from smart_open import open as smart_open
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
 __license__ = "MIT"
-__version__ = "20221104_144933"
+__version__ = "20230228_213148"
 
 
 # if len(sys.argv) < 2:
@@ -34,15 +34,57 @@ __version__ = "20221104_144933"
 #    exit(1)
 #config_file='export1.conf'
 #config_file=sys.argv[1]
-
+logger = logging.getLogger(__name__)
+logger_UI = logging.getLogger("UI")
+logger_UI.propagate = False
+logging.getLogger("splunklib.binding").setLevel(logging.INFO)
 
 def set_logging_level(log_level_in=None):
-    logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s %(name)-12s %(funcName)s %(levelname)-8s %(message)s',
-                    datefmt='%m-%d %H:%M:%S')
+    if options.log_format=='text':
+        logging.basicConfig(level=logging.DEBUG,
+                        format='%(asctime)s.%(msecs)03d %(name)-12s %(funcName)s %(levelname)-8s %(message)s',
+                        datefmt='%Y-%m-%dT%H:%M:%S')
+        logging.getLogger("UI").setLevel(logging.ERROR)
+    elif options.log_format=='json':
+        
+        logging.basicConfig(level=logging.DEBUG,
+                    format='{"timestamp": "%(asctime)s.%(msecs)03d", "name": "%(name)s", "module": "%(funcName)s", "level": "%(levelname)s", "message": "%(message)s"}',
+                    datefmt='%Y-%m-%dT%H:%M:%S')
+        # If the log format is json, setup a separate logger to send events that the Web UI can interpret, like a progress bar
+        
+        ui_handler = logging.StreamHandler()
+        ui_handler.setLevel(logging.INFO)
 
-    logger = logging.getLogger()
-    logger.handlers[0].stream = sys.stdout
+        formatter = logging.Formatter(fmt='{"timestamp": "%(asctime)s.%(msecs)03d", "name": "%(name)s", "module": "%(funcName)s", "level": "%(levelname)s", "message": %(message)s,"component": "%(component)s"}',
+                                      datefmt='%Y-%m-%dT%H:%M:%S')
+        ui_handler.setFormatter(formatter)
+        # print(ui_logger.handlers)
+        logger_UI.addHandler(ui_handler)
+        # print(logger_UI.handlers)
+
+        # Handle the case where no value for component was set in the extra attributes of the log message
+        class uiLogFilter(logging.Filter):
+            def filter(self, record):
+                if not hasattr(record, 'component'):
+                    record.component = '--'
+                # if not re.search(r"^{", str(record.msg)):
+                if "{" not in str(record.msg): 
+                    # record.msg = record.msg.replace('"', '')
+                    # record.msg = '"'+str(record.msg)+'"'
+                    record.msg = "".join(['"', str(record.msg),'"'])
+                # if not hasattr(record, 'key'):
+                #     record.key = ''
+                # if not hasattr(record, 'value'):
+                #     record.value = ''
+                return True
+            
+        # logger_UI.filters.clear()
+        logger_UI.addFilter(uiLogFilter())
+        # logging.getLogger("UI").basicConfig(format=uiFormat)
+        
+    # global logger
+    # logger = logging.getLogger()
+    # logger.handlers[0].stream = sys.stdout
     if log_level_in is None:
         log_level_config = options.log_level.upper()
     else:
@@ -56,6 +98,9 @@ def set_logging_level(log_level_in=None):
     # Use in functions to enable custom log level
     # logger = logging.getLogger()
     # logger.setLevel(logging.DEBUG)
+    # global logger_progress
+    # logger_progress = logging.getLogger("progress") 
+
 
 
 def load_config():
@@ -98,6 +143,7 @@ def load_config():
     p.add('--sample_ratio', default='0', help='The integer value used to calculate the sample ratio. The formula is 1 / <integer>.')
     p.add('--keep_n_jobs', default=10, help='Number of previous partition files to keep')
     p.add('--s3_uri', default='', help='The full path of the bucket to write files to ie s3://export-test-tmuth/test1/test1.txt')
+    p.add('--log_format', required=False, help='text | json', default='text')
 
     global options
     options = p.parse_args()
@@ -148,11 +194,13 @@ def get_globals():
             'job_partition_path':job_partition_path,
             'output_directory': output_directory
             }
+        
     return None
 
 
 def create_output_dir(path_in):
     path_new=os.path.normpath(path_in)
+    
     if not os.path.exists(path_new):
         os.makedirs(path_new)
 
@@ -163,22 +211,22 @@ def create_catalog():
     create_output_dir(global_vars["job_path"])
 
 def build_search_string(partition_in):
-    logging.debug('build_search_string-start')
-    logging.debug('indexes: %s',options.indexes)
-    logging.debug('extra: %s',options.extra)
+    logger.debug('build_search_string-start')
+    logger.debug('indexes: %s',options.indexes)
+    logger.debug('extra: %s',options.extra)
     s='search index='+partition_in["index"]
     if options.sourcetypes:
         s+=' sourcetype='+partition_in["sourcetype"]
     s+=' '+str(options.extra)
     
-    logging.debug('s: %s',s)
-    logging.debug('build_search_string-end')
+    logger.debug('s: %s',s)
+    logger.debug('build_search_string-end')
     return s
 
 def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str,interval_in: int):
-    logging.debug('explode_date_range-start')
-    logging.debug('begin_date_in: %s',begin_date_in)
-    logging.debug('end_date_in: %s',end_date_in)
+    logger.debug('explode_date_range-start')
+    logger.debug('begin_date_in: %s',begin_date_in)
+    logger.debug('end_date_in: %s',end_date_in)
     begin_date = dateutil.parser.parse(begin_date_in)
     if not end_date_in:
         end_date=datetime.now()
@@ -194,34 +242,34 @@ def explode_date_range(begin_date_in: str,end_date_in: str,interval_unit_in: str
         end_current = begin_current+timedelta(**{interval_unit_in: interval_in})
         if end_current > end_date:
             end_current = end_date
-        logging.debug('end_current: %s',end_current)
+        logger.debug('end_current: %s',end_current)
         result.append ([begin_current,end_current])
         #begin_current=end_current+timedelta(seconds=1)
        
         
         begin_current=end_current
-        logging.debug('begin_current: %s',begin_current)
-    logging.debug('explode_date_range-end')
+        logger.debug('begin_current: %s',begin_current)
+    logger.debug('explode_date_range-end')
     return result
 
 def search_splunk_for_sourtypes(index_list_in,date_array_in):
-    logging.debug('search_splunk_for_sourtypes-start')
+    logger.debug('search_splunk_for_sourtypes-start')
     result_list=[]
     for index in index_list_in:
         service=connect()
-        logging.debug('Index: %s',index)
-        logging.debug('date_earliest: %s',min(date_array_in))
-        logging.debug('date_earliest: %s',max(date_array_in))
+        logger.debug('Index: %s',index)
+        logger.debug('date_earliest: %s',min(date_array_in))
+        logger.debug('date_earliest: %s',max(date_array_in))
         
         search_string=' | metasearch index='+index+' sourcetype=* | stats count by index, sourcetype | fields - count'
-        logging.debug('search: %s',search_string)
+        logger.debug('search: %s',search_string)
         earliest_date=min(date_array_in[0])
         latest_date=max(date_array_in[1])
         job=search(service,search_string,earliest_date.isoformat(),latest_date.isoformat())
         reader = results.JSONResultsReader(job)
         
         for result in reader:
-            logging.debug(result)
+            logger.debug(result)
             result_list.append((result['index'],result['sourcetype']))
 
         #pprint(result_list)
@@ -298,13 +346,14 @@ def get_jobs_file_path():
     job_name=options.job_name
     job_path=get_catalog_path()
     jobs_file_path=os.path.join(job_path,job_name+'.jobs')
+    logger.info('jobs_file_path: %s',os.path.abspath(jobs_file_path))
     return jobs_file_path
 
 def check_previous_run_succeeded():
     jobs_file_path=get_jobs_file_path()
-    logging.debug("jobs_file_path: %s",jobs_file_path)
+    logger.debug("jobs_file_path: %s",jobs_file_path)
     if not os.path.isfile(jobs_file_path):
-        logging.debug("The job file doesn't exist so it's the first run of a job")
+        logger.debug("The job file doesn't exist so it's the first run of a job")
         return True
     
     with open(jobs_file_path,'r') as f:
@@ -315,10 +364,10 @@ def check_previous_run_succeeded():
     # print(last_job["status"])
 
     if last_job["status"] != "complete":
-        logging.debug("The last run did not complete")
+        logger.debug("The last run did not complete")
         return False
     else:
-        logging.debug("The last run did complete")
+        logger.debug("The last run did complete")
         return True
 
 def cleanup_failed_run(partition_file_in):
@@ -337,12 +386,12 @@ def cleanup_failed_run(partition_file_in):
         return False,0
 
     # if not os.path.isfile(partition_file_in):
-    #     logging.debug("Partition file does not exist: %s",partition_file_in)
+    #     logger.debug("Partition file does not exist: %s",partition_file_in)
     #     return False,0
     # else:
     # cleanup jobs file
     jobs_file_path=get_jobs_file_path()
-    logging.debug("jobs_file_path: %s",jobs_file_path)
+    logger.debug("jobs_file_path: %s",jobs_file_path)
     if not os.path.isfile(jobs_file_path):
         return False,0
     else:
@@ -351,7 +400,7 @@ def cleanup_failed_run(partition_file_in):
 
         last_job=json_data[-1]
         if last_job["status"] != "complete":
-            logging.debug("The last run did not complete")
+            logger.debug("The last run did not complete")
             partition_file=os.path.join(get_catalog_path(),last_job["partition_file"])
 
             failed_job = json_data[-1].copy()
@@ -391,7 +440,7 @@ def cleanup_failed_run(partition_file_in):
 
             return False,failed_job_data
         else:
-            logging.debug("The last run did complete")
+            logger.debug("The last run did complete")
             return True,None
 
 
@@ -404,13 +453,13 @@ def format_jobs_json(json_in):
     return json_doc
 
 def cleanup_old_jobs(job_list_in):
-    logging.debug('Deleting %s old jobs',len(job_list_in))
+    logger.debug('Deleting %s old jobs',len(job_list_in))
     for job in job_list_in:
         # print(job["job_id"])
         partition_file=os.path.join(global_vars["job_path"],job["partition_file"])
-        logging.debug('Partition file: %s',partition_file)
+        logger.debug('Partition file: %s',partition_file)
         if os.path.exists(partition_file):
-            logging.debug(partition_file)
+            logger.debug(partition_file)
             os.remove(partition_file)
 
 def resume_job_file():
@@ -422,18 +471,18 @@ def finalize_job_file(summary_in):
     # keep_n_jobs
 
     delete_first_n_jobs=len(json_data)-options.keep_n_jobs
-    logging.debug('Delete %s jobs',delete_first_n_jobs )
+    logger.debug('Delete %s jobs',delete_first_n_jobs )
     delete_jobs=json_data[:delete_first_n_jobs]
     cleanup_old_jobs(delete_jobs)
 
     keep_jobs=json_data[-options.keep_n_jobs:].copy()
-    logging.debug('Keep %s jobs',len(keep_jobs) )
+    logger.debug('Keep %s jobs',len(keep_jobs) )
 
     keep_jobs[-1]["status"]='complete'
     keep_jobs[-1]["end_time"]=summary_in["end_time"]
     # for job in keep_jobs:
     #         if job["job_id"]==global_vars["job_id"]:
-    #             logging.debug('Job id %s',job["job_id"] )
+    #             logger.debug('Job id %s',job["job_id"] )
     #             job["status"]='complete'
     #             job["end_time"]=summary_in["end_time"]
     #             break
@@ -442,8 +491,8 @@ def finalize_job_file(summary_in):
     
     # jobs_file=os.path.abspath(global_vars["jobs_file_path"])
     # partition_file=os.path.abspath(global_vars["partition_file_path"])
-    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
-    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
+    logger.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logger.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
 
     with open(global_vars["jobs_file_path"], "w") as outfile:
         # print('\n'.join(json_doc),file=outfile)
@@ -480,7 +529,7 @@ def write_job_file(summary_data_in):
 def get_previous_run_latest_dates(new_partitions_in):
     json_data = []
     if os.path.exists(global_vars["jobs_file_path"]):
-        logging.debug('jobs_file_path: %s',global_vars["jobs_file_path"])
+        logger.debug('jobs_file_path: %s',global_vars["jobs_file_path"])
         with open(global_vars["jobs_file_path"],'r+') as f:
             json_data = json.load(f)
         previous_job = json_data[-1].copy()
@@ -505,7 +554,7 @@ def get_previous_run_latest_dates(new_partitions_in):
 
 
 def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded_in):
-    logging.debug('write_search_partitions-start')
+    logger.debug('write_search_partitions-start')
     index_sourcetype_array,index_count,source_type_count=get_index_sourcetype_array(date_array_in)
     json_data = {}
     result_list = []
@@ -567,15 +616,21 @@ def write_search_partitions(date_array_in,options_hash_in,previous_run_succeeded
     with open(global_vars["job_partition_path"], "w") as outfile:
         outfile.write(search_partitions)
     
-    logging.debug('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
-    logging.debug('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
-    logging.debug('write_search_partitions-end')
+    d={'component':'job_info'}
+    v=os.path.abspath(global_vars["jobs_file_path"])
+    logger_UI.info('{"key": "Jobs File","value":"%s"}',v,extra=d)
+    v=os.path.abspath(global_vars["job_partition_path"])
+    logger_UI.info('{"key": "Partition File","value":"%s"}',v,extra=d)
+    
+    logger.info('Jobs File %s',os.path.abspath(global_vars["jobs_file_path"]) )
+    logger.info('Partition File %s',os.path.abspath(global_vars["job_partition_path"]) )
+    logger.debug('write_search_partitions-end')
     return int(summary_data["partition_count"])
 
 def update_partition_status(partition_file_in,partition_in,status_in,lock_in,result_count_in,last_date_in):
-    logging.debug('update_partition_status-start')
-    logging.debug('result_count_in: %s',result_count_in)
-    logging.debug('last_date_in: %s',last_date_in)
+    logger.debug('update_partition_status-start')
+    logger.debug('result_count_in: %s',result_count_in)
+    logger.debug('last_date_in: %s',last_date_in)
     lock_in.acquire()
     with open(partition_file_in,'r+') as f:
         data = json.load(f)
@@ -594,7 +649,10 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
         if status_in == 'complete':
             data["summary_data"]["complete_count"]=int(data["summary_data"]["complete_count"])+1
             pct_complete=round((data["summary_data"]["complete_count"]/global_vars["partition_count"])*100)
-            logging.info("Completed Partition %s of %s - %%%s Complete",data["summary_data"]["complete_count"],global_vars["partition_count"],pct_complete)
+            d={'component':'progress'}
+            logger_UI.info(pct_complete,extra=d)
+            # logger_UI.info(pct_complete)
+            logger.info("Completed Partition %s of %s - %%%s Complete",data["summary_data"]["complete_count"],global_vars["partition_count"],pct_complete)
             data["summary_data"]["total_results"]=int(data["summary_data"]["total_results"])+int(result_count_in)
             
             
@@ -603,7 +661,7 @@ def update_partition_status(partition_file_in,partition_in,status_in,lock_in,res
         f.write(json_object)
         f.truncate()
     lock_in.release()
-    logging.debug('update_partition_status-end')
+    logger.debug('update_partition_status-end')
 
 def finalize_partition_status(partition_file_in,lock_in):
     lock_in.acquire()
@@ -658,16 +716,16 @@ def get_search_partition(partition_file_in,lock_in):
 
 
 def search_export(service_in,search_in,partition_in):
-    logging.debug('search_export-start')
+    logger.debug('search_export-start')
 
-    logging.debug(service_in)
-    logging.debug(search_in)
-    logging.debug(partition_in["earliest"])
-    logging.debug(partition_in["latest"])
+    logger.debug(service_in)
+    logger.debug(search_in)
+    logger.debug(partition_in["earliest"])
+    logger.debug(partition_in["latest"])
     #pprint(search_in)
     #search_id="splunk_export_search_"+str(round(random.uniform(10000000, 90000000),4))
     search_id=str(round(random.uniform(10000000, 90000000),4))
-    logging.debug("Search ID: %s, OS Process ID: %s",search_id,os.getpid())
+    logger.debug("Search ID: %s, OS Process ID: %s",search_id,os.getpid())
     kwargs_export = {"search_mode": "normal",
                      'earliest_time': partition_in["earliest"],
                      'latest_time': partition_in["latest"],
@@ -679,19 +737,19 @@ def search_export(service_in,search_in,partition_in):
     if int(options.sample_ratio) > 0:
         kwargs_export["sample_ratio"]=options.sample_ratio
     # Changing the log level to DEBUG globally changes it for the Splunk SDK search too which can be too noisy. Overriding here. 
-    set_logging_level('WARN')
+    # set_logging_level('WARN')
 
     job = service_in.jobs.export(search_in, **kwargs_export)
-    set_logging_level()
-    logging.debug("search_export-end")
+    # set_logging_level()
+    logger.debug("search_export-end")
 
     return job
 
 def search(service_in,search_in,earliest_in,latest_in):
-    logging.debug('search-start')
+    logger.debug('search-start')
 
-    logging.debug(service_in)
-    logging.debug(search_in)
+    logger.debug(service_in)
+    logger.debug(search_in)
     
     kwargs_export = {"search_mode": "normal",
                      'earliest_time': earliest_in,
@@ -702,18 +760,21 @@ def search(service_in,search_in,earliest_in,latest_in):
     job = service_in.jobs.export(search_in, **kwargs_export)
     
     
-    logging.debug("search-end")
+    logger.debug("search-end")
 
     return job
 
 def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
     
-    logging.info('dispatch_searches-start')
+    logger.info('dispatch_searches-start')
     global options
     options=options_in
     global global_vars
+
+    
     global_vars=global_vars_in
     set_logging_level()
+
     while True:
     #while False:
         partition_out=get_search_partition(partition_file_in,lock_in)
@@ -722,7 +783,7 @@ def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
             search_string=build_search_string(partition_out)
             service=connect()
             job=search_export(service,search_string,partition_out)
-            set_logging_level()
+            # set_logging_level()
             #print_results(job)
             results=write_results(job,partition_out)
             update_partition_status(partition_file_in,partition_out,'complete',lock_in,results["count"],results["last_time_stamp"])
@@ -730,7 +791,7 @@ def dispatch_searches(partition_file_in,options_in,lock_in,global_vars_in):
         else:
             break
 
-    logging.debug('dispatch_searches-end')
+    logger.debug('dispatch_searches-end')
 
 def split_s3_path(s3_path):
     path_parts=s3_path.replace("s3://","").split("/")
@@ -778,7 +839,7 @@ def send_results_to_hec(job_in,partition_in):
                 
 
                 splhec.set_request_params({'_time':time_stamp,'index':result["index"], 'sourcetype':result["sourcetype"], 'source':result["source"]})
-                #logging.debug("result-sourcetype: %s",result["index"])
+                #logger.debug("result-sourcetype: %s",result["index"])
                 #pprint(result)
                 payload=str(result["_raw"])
                 #payload['event']=str(result["_raw"])
@@ -793,14 +854,14 @@ def send_results_to_hec(job_in,partition_in):
     except Exception as Argument:
         logging.exception('Send to HEC error')
     finally:
-        logging.debug("Result count: %s",i)
+        logger.debug("Result count: %s",i)
         splhec.stop_threads_and_processing()
         result_summary={'count':i,'last_time_stamp':last_time_stamp}
         return result_summary
 
 
 def write_results_to_file(job_in,partition_in):
-    logging.debug('write_results-start')
+    logger.debug('write_results-start')
     
     earliest=partition_in["earliest"]
     earliest=re.sub("[/:]", "-", earliest)
@@ -862,14 +923,14 @@ def write_results_to_file(job_in,partition_in):
         return output_file_temp_local,output_file_local
 
     output_file_temp,output_file=get_new_file_name(file_name)
-    logging.debug('output_file_temp: %s',output_file_temp)
+    logger.debug('output_file_temp: %s',output_file_temp)
 
     def open_file(output_file_temp_in):
         if options.gzip=='true' and options.output_destination=='file':
             f_out = gzip.open(output_file_temp_in, compresslevel=9, mode='wt')
             # output_file=output_file+'.gz'
         elif options.output_destination=='s3':
-            set_logging_level('WARN')
+            # set_logging_level('WARN')
             f_out = smart_open(output_file_temp_in, 'w')
         else:
             f_out = open(output_file_temp_in, "w")
@@ -917,8 +978,8 @@ def write_results_to_file(job_in,partition_in):
             i+=1
             if isinstance(result, dict):
                 empty_result=False
-                #logging.debug("Non-Empty result")
-                #logging.debug(result["_time"])
+                #logger.debug("Non-Empty result")
+                #logger.debug(result["_time"])
 
                 if options.incremental_mode.lower() =='true' and options.incremental_time_source.lower()=='file':
                     if last_time_stamp is None:
@@ -926,7 +987,7 @@ def write_results_to_file(job_in,partition_in):
                     else:
                         current_time_stamp=datetime.strptime(result["_time"],'%Y-%m-%d %H:%M:%S.%f %Z')
                         last_time_stamp=max(current_time_stamp,last_time_stamp)
-                    # logging.debug("last time: %s",last_time_stamp )
+                    # logger.debug("last time: %s",last_time_stamp )
                 
 
                 
@@ -948,7 +1009,7 @@ def write_results_to_file(job_in,partition_in):
                 if (int(options.max_file_size_mb)>0 and i % check_size_loops == 0) :
                     check_size_loops,current_size=check_file_size(f,check_size_loops)
                     if current_size >= float(options.max_file_size_mb):
-                        logging.debug("Reached file size limit %s: ",current_size)
+                        logger.debug("Reached file size limit %s: ",current_size)
                         check_size_loops=check_size_loops_orig
                         f.close()
                         
@@ -956,13 +1017,13 @@ def write_results_to_file(job_in,partition_in):
                             file_number+=1
                             dummy,output_file=get_new_file_name(file_name)
                         
-                        logging.debug("Result count for:%s is %s",output_file,i)
+                        logger.debug("Result count for:%s is %s",output_file,i)
                         if options.output_destination.lower()=='file':
                             os.rename(output_file_temp,output_file)
                         else:
                             bucket, tmp_key = split_s3_path(output_file_temp)
                             bucket, final_key = split_s3_path(output_file)
-                            logging.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
+                            logger.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
                             s3 = boto3.resource('s3')
                             copy_source = {
                                 'Bucket': bucket,
@@ -972,7 +1033,7 @@ def write_results_to_file(job_in,partition_in):
                             s3.Object(bucket, tmp_key).delete()
                         file_number+=1
                         output_file_temp,output_file=get_new_file_name(file_name)
-                        logging.debug("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
+                        logger.debug("output_file_temp,output_file: %s,%s ",output_file_temp,output_file)
                         f = open_file(output_file_temp)
                         counter_per_file=0
                         
@@ -980,16 +1041,16 @@ def write_results_to_file(job_in,partition_in):
             elif isinstance(result, results.Message):
                 # Diagnostic messages may be returned in the results
                 #print(vars(job_in))
-                logging.debug("Empty result")
-                logging.debug("Diagnostic message: %s",result)
+                logger.debug("Empty result")
+                logger.debug("Diagnostic message: %s",result)
                 i=0
         #last_time_stamp=datetime.strptime(max(result["_time"]),'%Y-%m-%d %H:%M:%S.%f %Z')
-        #logging.debug("last time max: %s",last_time_stamp )
+        #logger.debug("last time max: %s",last_time_stamp )
     except Exception as Argument:
         logging.exception('Write to file error')
     finally:
-        set_logging_level(options.log_level)
-        logging.debug("Result count: %s",i)
+        # set_logging_level(options.log_level)
+        logger.debug("Result count: %s",i)
 
         if options.output_destination.lower()=='file':
             if empty_result:
@@ -1006,7 +1067,7 @@ def write_results_to_file(job_in,partition_in):
             s3 = boto3.resource('s3')
             bucket, tmp_key = split_s3_path(output_file_temp)
             bucket, final_key = split_s3_path(output_file)
-            logging.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
+            logger.debug("bucket: %s,tmp_key: %s, final_key: %s",bucket,tmp_key,final_key)
             if empty_result:
                 f.close()
                 s3.Object(bucket, tmp_key).delete()
@@ -1027,29 +1088,41 @@ def write_results_to_file(job_in,partition_in):
 
 
         
-        logging.debug('write_results-end')
+        logger.debug('write_results-end')
         result_summary={'count':i,'last_time_stamp':last_time_stamp}
         return result_summary
 
         
 def connect():
     try:
-        logging.debug('connect-start')
-        logging.debug('SPLUNK_HOST: %s',options.SPLUNK_HOST)
-        logging.debug('SPLUNK_PORT: %s',options.SPLUNK_PORT)
-        logging.debug('SPLUNK_AUTH_TOKEN: %s',options.SPLUNK_AUTH_TOKEN)
+        logger.debug('connect-start')
+        logger.debug('SPLUNK_HOST: %s',options.SPLUNK_HOST)
+        logger.debug('SPLUNK_PORT: %s',options.SPLUNK_PORT)
+        logger.debug('SPLUNK_AUTH_TOKEN: %s',options.SPLUNK_AUTH_TOKEN)
        
         service = client.connect(
             host=options.SPLUNK_HOST,
             port=options.SPLUNK_PORT,
             splunkToken=options.SPLUNK_AUTH_TOKEN,
             autologin=True)
-        logging.debug(service)
-        logging.debug('connect-successful')
-        logging.debug('connect-end')
+        logger.debug(service)
+        logger.debug('connect-successful')
+        logger.debug('connect-end')
         return service
     except:
         logging.error('connect-failed')
+def get_server_info():
+    service=connect()
+    # getattr(service, 'info')
+    info=service.info
+    log_keys=['serverName','numberOfVirtualCores','os_name_extended','product_type','physicalMemoryMB','version']
+    for k,v in info.items():
+        if k in log_keys:
+            d={'component':'server_info'}
+            logger.info("Key: %s, Value: %s",k,v)
+            # d={'component':'server_info','key':k,'value':v}
+            logger_UI.info('{"key": "%s","value":"%s"}',k,v,extra=d)
+            # print("Key: %s, Value: %s",k,v)
 
 def main():
     
@@ -1065,7 +1138,13 @@ def main():
     
     set_logging_level()
     
- 
+    get_server_info()
+    
+    # logger_UI.removeFilter
+    logger.info('catalog_dir: %s',os.path.abspath(global_vars['catalog_dir']))
+    logger.info('output_dir: %s',os.path.abspath(global_vars['output_directory']))
+    
+    # quit()
     create_catalog()
     previous_run_succeeded=check_previous_run_succeeded()
     # print(previous_run_succeeded)
