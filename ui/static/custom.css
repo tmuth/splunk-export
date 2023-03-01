@@ -73,3 +73,45 @@ input,select{margin-right:20px}
       color:#740404}
 
 h2{font-weight:normal;font-size:small}
+
+
+.ui-progressbar {
+position: relative;
+
+}
+.progress-label {
+position: absolute;
+left: 50%;
+top: 4px;
+font-weight: bold;
+text-shadow: 1px 1px 0 #fff;
+}
+
+div.script-output {
+    display:block; 
+    border:1px #aaaaaa solid;
+    margin: 10px;
+    padding: 4px;
+    font-family: monospace;
+}
+
+
+
+.columnTitle, .column {
+    float: left;
+    width: 200px;
+  }
+  
+.columnTitle{
+    font-weight: bold;
+    width: 200px;
+  }
+
+  /* Clear floats after the columns */
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+  } 
+
+  

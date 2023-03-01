@@ -24,7 +24,13 @@ python3 splunk_export_parallel.py
 </form>
 <input value="Run Export" id="runButton" type="submit" />
 
-<div id="script-output" title="" style="display:block; border:1px #aaaaaa solid;">
+<div id="progressbar" style="width:300px;"><div class="progress-label">Loading...</div></div>
+
+<div id="progress-output" title="" style="display:block; border:1px #aaaaaa solid;">
+</div>
+<div id="server-info" title="" class="script-output row">
+</div>
+<div id="script-output" title=""  class="script-output">
 </div>
 
 
@@ -50,9 +56,50 @@ python3 splunk_export_parallel.py
 
     $("#runButton").click(function () {
         console.log('run button clicked')
-
-        var es = new EventSource("/stream?parameters="+$('#runParameters').val());
+        $( "#progressbar" ).progressbar( "value", 0 );
+        $( "#progressbar" ).show()
+        $("#script-output").html('');
+        $("#server-info").html('');
+        str=' --log_format "json"'
+        var encoded = encodeURIComponent(str);
+        var es = new EventSource("/stream?parameters="+$('#runParameters').val()+encoded);
         // var es = new EventSource();
+
+        es.addEventListener("end_session", (e) => {
+            // console.log(e.data);
+            var data = JSON.parse(e.data);
+            // console.log(data.message);
+            console.log("Closing SSE Session");
+            es.close();
+        });
+
+        es.addEventListener("log", (e) => {
+            console.log(e.data);
+            var data = JSON.parse(e.data);
+            // console.log(data.message);
+            if(data.name == "progress") {
+                $("#progress-output").html(data.message+'<br />');
+
+                $( "#progressbar" ).progressbar( "value", parseInt(data.message) );
+            }
+            else if(data.name == "UI") {
+                console.log(data.message)
+                if(data.component=="progress"){
+                    // $("#progress-output").html(data.message+'<br />');
+                    $( "#progressbar" ).progressbar( "value", parseInt(data.message) );
+                }
+                else if(data.component=="server_info") {
+                    // tr = str.replace(/\'/g, '"');
+                    // var info = JSON.parse(data.message);
+                    $("#server-info").append('<div class="columnTitle">'+data.message.key+': </div> <div class="column">'+data.message.value+'</div>');
+                }
+
+            }
+            else{
+                $("#script-output").append(data.message+'<br />');
+            }
+        });
+
 
         es.onmessage = function(e) {
             // document.getElementById("log").innerHTML = e.data;
@@ -75,14 +122,27 @@ python3 splunk_export_parallel.py
         //  runScriptInline()
     })
 
-    // var es = new EventSource("/stream");
-    // var es = new EventSource();
+    // $( "#progressbar" ).progressbar({
+    //   value: 0
+    // });
 
-    // es.onmessage = function(e) {
-    //     // document.getElementById("log").innerHTML = e.data;
-    //     $("#script-output").append(e.data+'<br />');
-        
-    // }
+    $( function() {
+        var progressbar = $( "#progressbar" ),
+        progressLabel = $( ".progress-label" );
+        $( "#progressbar" ).hide()
+    
+        progressbar.progressbar({
+        value: false,
+        change: function() {
+            progressLabel.text( progressbar.progressbar( "value" ) + "%" );
+        },
+        complete: function() {
+            progressLabel.text( "Complete!" );
+        }
+        });
+    } );
+
+
 </script>
 
 % include('ui/footer.tpl')

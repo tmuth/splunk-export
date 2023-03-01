@@ -90,9 +90,9 @@ def command_line_parameters():
 def splunk_connect():
     payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
 
-    SPLUNK_HOST='localhost'
-    SPLUNK_PORT=8089
-    SPLUNK_AUTH_TOKEN='eyJraWQiOiJzcGx1bmsuc2VjcmV0IiwiYWxnIjoiSFM1MTIiLCJ2ZXIiOiJ2MiIsInR0eXAiOiJzdGF0aWMifQ.eyJpc3MiOiJhZG1pbiBmcm9tIEMwMkcyMzVCTUQ2UiIsInN1YiI6ImFkbWluIiwiYXVkIjoicHl0aG9uIHRlc3RzIiwiaWRwIjoiU3BsdW5rIiwianRpIjoiYWIyMzQ4M2FhYjk2OTA1ZGJmNGUwZTdlM2Y0OGI1MjE1ODcyOTUwM2ZmNjE0YjVjNzc5MWUyZWRlOGFkZjBhNSIsImlhdCI6MTY2Mzc4MDc3MiwiZXhwIjoxNzE1NjIwNzcyLCJuYnIiOjE2NjM3ODA3NzJ9.b0SRVIBCn3mEy3kXuE5BXyrNruW392Sch52QzWeCQ2n5NukW3dkT8FdH_YvQNwAr1DdP7JUROgdHdhCu2cT18A'
+    # SPLUNK_HOST='localhost'
+    # SPLUNK_PORT=8089
+    # SPLUNK_AUTH_TOKEN='eyJraWQiOiJzcGx1bmsuc2VjcmV0IiwiYWxnIjoiSFM1MTIiLCJ2ZXIiOiJ2MiIsInR0eXAiOiJzdGF0aWMifQ.eyJpc3MiOiJhZG1pbiBmcm9tIEMwMkcyMzVCTUQ2UiIsInN1YiI6ImFkbWluIiwiYXVkIjoicHl0aG9uIHRlc3RzIiwiaWRwIjoiU3BsdW5rIiwianRpIjoiYWIyMzQ4M2FhYjk2OTA1ZGJmNGUwZTdlM2Y0OGI1MjE1ODcyOTUwM2ZmNjE0YjVjNzc5MWUyZWRlOGFkZjBhNSIsImlhdCI6MTY2Mzc4MDc3MiwiZXhwIjoxNzE1NjIwNzcyLCJuYnIiOjE2NjM3ODA3NzJ9.b0SRVIBCn3mEy3kXuE5BXyrNruW392Sch52QzWeCQ2n5NukW3dkT8FdH_YvQNwAr1DdP7JUROgdHdhCu2cT18A'
     output=''
     service={}
 
@@ -106,11 +106,11 @@ def splunk_connect():
         token_match=re.search("%.+%",auth_token)
         if token_match:
             # print(options.SPLUNK_AUTH_TOKEN)
-            print(auth_token)
+            # print(auth_token)
             env_var=re.sub(r"%(.+)%","\\1",auth_token)
             # print(env_var)
             env_var_val=os.environ.get(env_var)
-            print(env_var_val)
+            # print(env_var_val)
             auth_token=env_var_val
         
         service = client.connect(
@@ -209,6 +209,7 @@ def stream():
     
     # python3 splunk_export_parallel.py 
     exec_string="python3 splunk_export_parallel.py "+urllib.parse.unquote(payload["parameters"])
+    # exec_string="python misc/logging-test.py"
     sub = Popen(exec_string, stdout=PIPE, stderr=subprocess.STDOUT, shell=True, preexec_fn=os.setsid)
     # sub = Popen('sleep 1; ping www.google.com -c 2; sleep 5; uname', stdout=PIPE, shell=True, preexec_fn=os.setsid)
     # global_process=sub
@@ -220,13 +221,18 @@ def stream():
         pprint(s)
         if len(s)==0:
             print("CLOSE")
-            yield ''
+            
+            msg = 'event: end_session\ndata: {"message":"closing SSE"} \n\n'
+            yield msg
             break
         else:
             # print(s.strip())
             n = s.strip()
-            print(n.decode())
-            yield 'data: %s\n\n' % n.decode()
+            # print(n.decode())
+            msg = "event: log\n"+'data: %s\n\n' % n.decode()
+            # msg = 'event: foo \ndata: {"message":"bar"} \n\n'
+            yield msg
+
 
     # print("CLOSE")
     # yield 'CLOSE:'
