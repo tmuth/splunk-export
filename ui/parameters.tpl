@@ -18,17 +18,9 @@
         <label for="filesOutput">Files
             <input type="radio" id="filesOutput" name="data_output" value="Files" checked="checked" />
         </label>
-
         <label for="hecOutput">HEC<input type="radio" id="hecOutput" name="data_output" value="HEC" /></label>
-        <div>
-            <label>Log Level:</label><select name="log_level">
-                <option>DEBUG</option>
-                <option selected value="INFO">INFO</option>
-                <option>WARNING</option>
-                <option>ERROR</option>
-                <option>CRITICAL</option>
-            </select>
-        </div>
+        <div><a class="ui-button ui-widget ui-corner-all" href="#" id="loadParameterFile">Load Parameters from File</a></div>
+
     </fieldset>
 
 
@@ -40,7 +32,15 @@
             title="A directory with this name will be created to contain the catalog metadata files, not the actual export data files." />
         <label for="jobLocation" >Job Location:</label> <input name="job_location" id="jobLocation" type="text" value="../" class="inputTextLong"
             title="Path to store the catalog for this job" />
-
+            <div>
+                <label>Log Level:</label><select name="log_level">
+                    <option>DEBUG</option>
+                    <option selected value="INFO">INFO</option>
+                    <option>WARNING</option>
+                    <option>ERROR</option>
+                    <option>CRITICAL</option>
+                </select>
+            </div>
         <!-- </div> -->
     </fieldset>
 
@@ -67,11 +67,12 @@
             <option>raw</option>
         </select>
 
-        <label>GZIP Files</label>
-        <input type="radio" id="gzipFileFalse" name="gzip" value="False" checked="checked" />
+        <label>GZIP Files:</label>
         <label for="filesOutput">False</label>
-        <input type="radio" id="gzipFileTrue" name="gzip" value="True" />
+        <input type="radio" id="gzipFileFalse" name="gzip" value="False" checked="checked" />
         <label for="gzipFileTrue">True</label>
+        <input type="radio" id="gzipFileTrue" name="gzip" value="True" />
+        
         <label>Max File Size MB:</label> <input name="max_file_size_mb" type="text" value="0" class="inputNumber"
             title="The approximate maximum size in megabytes of each export file. 0 for unlimited" />
 
@@ -262,10 +263,31 @@
             // }
         });
 
+        function setValuesFromQuerystring() {
+            const queryString = window.location.search;
+            const urlParams = new URLSearchParams(queryString);
+            // const product = urlParams.get('product')
+            // console.log(product);
+            const
+                keys = urlParams.keys(),
+                values = urlParams.values(),
+                entries = urlParams.entries();
+
+                // for (const key of keys) console.log(key);
+
+                // for (const value of values) console.log(value);
+
+                for(const entry of entries) {
+                    console.log(`${entry[0]}: ${entry[1]}`);
+                    $('input[name="'+`${entry[0]}`+'"]').val(`${entry[1]}`)
+                }
+
+        }
 
         getValuesFromCookie()
         setGenerateFormat()
-        setFilesOrHec();
+        setFilesOrHec()
+        setValuesFromQuerystring()
 
         $("#generateButton").click(function () {
             saveValuesToCookie()
@@ -336,6 +358,10 @@
             $label.append(str);
             $label.find('span').css({"color":"red"});
         }
+    });
+
+    $('#loadParameterFile').click(function(){
+        window.location.href="/load-parameters-from-file";
     });
 </script>
 

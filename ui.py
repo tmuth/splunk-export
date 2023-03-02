@@ -14,12 +14,16 @@ import urllib.parse
 
 
 
-from bottle import get, post, request, response
+from bottle import get, post, request, response,redirect
 from bottle import GeventServer, run
 import time, gc
 from pprint import pprint
+import configargparse
+import io
+
 
 ui_subdir='ui'
+UPLOAD_DIR='ui_tmp'
 
 app = Bottle()
 
@@ -237,6 +241,66 @@ def stream():
     # print("CLOSE")
     # yield 'CLOSE:'
  
+@app.route('/load-parameters-from-file', method='GET')
+def load_parameters():
+    # payload = merge_dicts(dict(request.forms), dict(request.query.decode()))
+    # response.set_cookie('payload', str(payload))
+    return template(ui_subdir+'/load-parameters-from-file')
+
+@app.route('/process-uploaded-parameters', method='POST')
+def process_parameter_file():
+    """Handle file upload form"""
+    # print('yep')
+    import configparser
+    # get the 'newfile' field from the form
+    newfile = request.files.get('parameterFile')
+    print(newfile.content_type)
+    # only allow upload of text files
+    # if newfile.content_type != 'text/plain':
+    #     return "Only text files allowed"
+    def create_output_dir(path_in):
+        path_new=os.path.normpath(path_in)
+        
+        if not os.path.exists(path_new):
+            os.makedirs(path_new)
+    create_output_dir(UPLOAD_DIR)
+    save_path = os.path.join(UPLOAD_DIR, newfile.filename)
+    # newfile.save(save_path)
+
+    # name = request.forms.name
+    # data = request.files.data
+    
+    raw = newfile.file.read().decode() # This is dangerous for big files
+    for line in io.StringIO(raw):
+        print(line)
+    
+    # config = configparser.ConfigParser(allow_no_value=True)
+    # self.config = ConfigParser.ConfigParser()
+    # self.config.optionxform = str
+    # from configparser import ConfigParser, ExtendedInterpolation
+    config = configparser.ConfigParser(interpolation=configparser.ExtendedInterpolation())
+    config.optionxform = str
+    config.read_string(raw)
+    # print(config.sections())
+    parameter_list=[]
+    for each_section in config.sections():
+        for (each_key, each_val) in config.items(each_section):
+            print(each_key,each_val)
+            val = re.sub(r'\s{0,}#.*', r'', each_val)
+            parameter_list.append(each_key+'='+val)
+
+    print(parameter_list)
+    parameter_string='&'.join(parameter_list)
+    print(parameter_string)
+    parameter_string_encoded=urllib.parse.quote_plus(parameter_string)
+
+    # filename = newfile.filename
+    # return "Hello! You uploaded %s (%d bytes). <br /> <pre>%s</pre>" % (filename, len(raw), raw)
+
+    # redirect to home page if it all works ok
+    return redirect('/?'+parameter_string_encoded)
+
+
 
 def shutdown(data, context):
     print('Shutting down ...')
