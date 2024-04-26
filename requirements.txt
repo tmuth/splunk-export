@@ -1,0 +1,7 @@
+boto3==1.34.92
+ConfigArgParse==1.7
+python_dateutil==2.8.2
+smart_open==7.0.4
+splunk_hec==1.11
+splunklib==1.0.0
+tendo==0.3.0
