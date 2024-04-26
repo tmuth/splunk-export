@@ -60,3 +60,11 @@ cloud1/
         └── _internal_splunkd_ui_access_2022-11-02T00-00-00.json
   ```
 
+## Installation
+- Clone this git repo locally
+- Change to that directory in a terminal
+- Run pip install -r requirements.txt
+
+## Run
+- Copy export_internal.conf to a new config file and modify that file with relevant config options, like splunk_source, search and export sections. You can ignore the hec section unless you change export from file to hec
+- Run the export via python3 splunk_export_parallel.py your_config_file.conf
