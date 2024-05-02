@@ -12,7 +12,7 @@ import logging
 import splunklib.client as client
 import splunklib.results as results
 from time import sleep
-from splunk_hec import splunk_hec
+#from splunk_hec import splunk_hec
 import configargparse
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
 
@@ -78,8 +78,10 @@ def  format_date(date_in):
         return_date=datetime.now()
     else:
         return_date = dateutil.parser.parse(date_in)
+        
     logging.debug("return_date: %s",return_date)
-    return_date=return_date.strftime('%s')
+    #return_date=return_date.strftime('%s')
+    return_date=return_date.timestamp()
     logging.debug("return_date: %s",return_date)
 
     return return_date
@@ -137,13 +139,20 @@ def write_to_file(job_in):
 
 def write_to_file2(job_in):
 
+    f = gzip.open(options.file, compresslevel=9, mode='wt')
+    #f = open(options.file, "w")
     reader = results.JSONResultsReader(job_in)
-    ds = list(reader)
-    #print(ds)
-    pprint(dir(job_in))
-    pprint(dir(reader))
-    print(len(ds))
-    # pprint((job_in["seekable"]))
+    for result in reader:
+        # print(result["_raw"])
+        print(result["_raw"],file=f)
+    # ds = list(reader)
+    # #print(ds)
+    # pprint(dir(job_in))
+    # pprint(dir(reader))
+    # print(len(ds))
+
+
+
     
     # for result in reader:
     #     if isinstance(result, dict):
