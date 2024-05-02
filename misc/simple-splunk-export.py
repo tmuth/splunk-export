@@ -144,7 +144,7 @@ def write_to_file2(job_in):
     reader = results.JSONResultsReader(job_in)
     for result in reader:
         # print(result["_raw"])
-        print(result["_raw"],file=f)
+        print(str(result["_raw"].encode('utf-8')),file=f)
     # ds = list(reader)
     # #print(ds)
     # pprint(dir(job_in))
