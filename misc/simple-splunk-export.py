@@ -139,12 +139,12 @@ def write_to_file(job_in):
 
 def write_to_file2(job_in):
 
-    f = gzip.open(options.file, compresslevel=9, mode='wt')
-    #f = open(options.file, "w")
+    f = gzip.open(options.file, compresslevel=9, mode='wt',encoding='UTF-8')
+    #f = open(options.file, "w",encoding='UTF-8')
     reader = results.JSONResultsReader(job_in)
     for result in reader:
         # print(result["_raw"])
-        print(str(result["_raw"].encode('utf-8')),file=f)
+        print(str(result["_raw"]),file=f)
     # ds = list(reader)
     # #print(ds)
     # pprint(dir(job_in))
