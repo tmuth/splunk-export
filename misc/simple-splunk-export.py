@@ -15,6 +15,8 @@ from time import sleep
 #from splunk_hec import splunk_hec
 import configargparse
 # pip install configparser,dateutil,splunk-sdk,splunk-hec-ftf,configargparse
+from memory_profiler import profile
+
 
 __author__ = "Tyler Muth"
 __source__ = "https://github.com/tmuth/splunk-export"
@@ -137,14 +139,20 @@ def write_to_file(job_in):
             f.close()
         return(i)
 
+@profile
 def write_to_file2(job_in):
 
-    f = gzip.open(options.file, compresslevel=9, mode='wt',encoding='UTF-8')
-    #f = open(options.file, "w",encoding='UTF-8')
+    f = gzip.open(options.file, compresslevel=3, mode='wt',encoding='UTF-8')
+    f = open(options.file, "w",encoding='UTF-8')
     reader = results.JSONResultsReader(job_in)
     for result in reader:
         # print(result["_raw"])
-        print(str(result["_raw"]),file=f)
+        #print(str(result["_raw"]),file=f)
+        
+        if isinstance(result, dict):
+            f.write(str(result["_raw"]))
+        elif isinstance(result, results.Message):
+            print("Message: %s",result)
     # ds = list(reader)
     # #print(ds)
     # pprint(dir(job_in))
